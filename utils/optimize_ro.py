@@ -70,12 +70,13 @@ def optimize_vessel_array_configuration(
     """
     
     # Handle flux parameters using the new optional inputs
-    if flux_targets_lmh is not None:
-        # Validate and normalize the new flux parameters
+    if flux_targets_lmh is not None or flux_tolerance is not None:
+        # Use new parameter style - validate and normalize
         normalized_flux_targets, normalized_flux_tolerance = validate_flux_parameters(
             flux_targets_lmh, flux_tolerance, max_stages
         )
         stage_flux_targets_lmh = normalized_flux_targets
+        flux_tolerance = normalized_flux_tolerance  # Update the variable for consistent logging
         # Calculate flux limits from tolerance
         flux_lower_limit = 1.0 - normalized_flux_tolerance
         flux_upper_limit = 1.0 + normalized_flux_tolerance
@@ -83,9 +84,8 @@ def optimize_vessel_array_configuration(
         # Use legacy parameters or defaults
         if stage_flux_targets_lmh is None:
             stage_flux_targets_lmh = [18, 15, 12]
-        # Use flexible flux tolerance (user provided or default)
-        if flux_tolerance is None:
-            flux_tolerance = DEFAULT_FLUX_TOLERANCE
+        # Use default flux tolerance
+        flux_tolerance = DEFAULT_FLUX_TOLERANCE
         flux_lower_limit = 1.0 - flux_tolerance  # e.g., 0.9 for 10% tolerance
         flux_upper_limit = 1.0 + flux_tolerance  # e.g., 1.1 for 10% tolerance
     
@@ -159,24 +159,7 @@ def optimize_vessel_array_configuration(
                 if best_config is None or config['recovery'] > best_config['recovery']:
                     best_config = config
         
-        # If we still can't meet recovery target and we're at lower limit,
-        # try going below the limit (down to 70% of target)
-        if best_config is not None:
-            current_total_recovery = best_config['recovery']
-            # Check if this might help achieve target recovery
-            if current_total_recovery < 0.95:  # If stage recovery is low
-                emergency_factors = np.linspace(flux_lower_limit, 0.7, 5)
-                for factor in emergency_factors[1:]:  # Skip first (already tried)
-                    flux = flux_target * factor
-                    config = evaluate_vessel_count_at_flux(n_vessels, feed_flow, flux, min_conc_flow)
-                    
-                    if config is not None:
-                        config['flux_ratio'] = factor
-                        config['flux_target'] = flux_target
-                        config['conc_ratio'] = config['conc_per_vessel'] / min_conc_flow
-                        
-                        if config['recovery'] > best_config['recovery']:
-                            best_config = config
+# Emergency flux reduction removed - this should only be available during global optimization
         
         return best_config
     
@@ -221,11 +204,10 @@ def optimize_vessel_array_configuration(
             
             for stage in current_stages:
                 current_ratio = stage['flux_ratio']
-                # Flexibility is how much we can move toward target (1.0)
+                # Flexibility is how much we can adjust flux
                 if recovery_error > 0:  # Need to reduce recovery
-                    # Can reduce flux toward lower limit or target
-                    flexibility = min(current_ratio - flux_lower_limit, 
-                                    max(0, current_ratio - 1.0))
+                    # Can reduce flux down to lower limit
+                    flexibility = current_ratio - flux_lower_limit
                 else:  # Need to increase recovery
                     # Can increase flux toward upper limit
                     flexibility = flux_upper_limit - current_ratio
@@ -249,13 +231,28 @@ def optimize_vessel_array_configuration(
                     current_flux = stage['flux']
                     flux_change = stage_permeate_change * 1000 / (stage['n_vessels'] * vessel_area)
                     
-                    # Apply with damping for stability
-                    damping = 0.7
+                    # Apply with damping for stability (more aggressive when overshooting significantly)
+                    if recovery_error > tolerance_param:
+                        damping = 0.9  # More aggressive adjustment when overshooting
+                    else:
+                        damping = 0.7  # Conservative adjustment otherwise
                     new_flux = current_flux + flux_change * damping
                     
-                    # Ensure within bounds
-                    new_flux = max(stage['flux_target'] * flux_lower_limit,
-                                 min(stage['flux_target'] * flux_upper_limit, new_flux))
+                    # Determine flux bounds - allow exception for recovery targeting
+                    normal_lower_bound = stage['flux_target'] * flux_lower_limit
+                    emergency_lower_bound = stage['flux_target'] * 0.7  # Emergency limit: 70% of target
+                    upper_bound = stage['flux_target'] * flux_upper_limit
+                    
+                    # Use emergency lower bound if we're significantly overshooting target
+                    if recovery_error > tolerance_param:
+                        # Allow going below normal tolerance to achieve target recovery
+                        effective_lower_bound = emergency_lower_bound
+                        logger.debug(f"    Stage {i+1}: Using emergency flux limit ({effective_lower_bound/stage['flux_target']*100:.0f}% of target)")
+                    else:
+                        effective_lower_bound = normal_lower_bound
+                    
+                    # Ensure within bounds (now with conditional emergency limit)
+                    new_flux = max(effective_lower_bound, min(upper_bound, new_flux))
                     
                     # Verify configuration is valid
                     test_config = evaluate_vessel_count_at_flux(

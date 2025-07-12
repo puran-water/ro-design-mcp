@@ -60,8 +60,9 @@ async def optimize_ro_configuration(
         membrane_type: Type of membrane ("brackish" or "seawater")
         allow_recycle: Whether to allow concentrate recycle for high recovery
         max_recycle_ratio: Maximum allowed recycle ratio (0-1)
-        flux_targets_lmh: Optional flux targets in LMH as JSON string.
-                         Examples: "20" for single value, "[22, 18, 15]" for per-stage
+        flux_targets_lmh: Optional flux targets in LMH. Accepts:
+                         - Simple numbers: "20" or "18.5"
+                         - JSON arrays: "[22, 18, 15]" for per-stage targets
         flux_tolerance: Optional flux tolerance as fraction (e.g., 0.1 for ±10%)
     
     Returns:
@@ -97,6 +98,13 @@ async def optimize_ro_configuration(
         if membrane_type not in ["brackish", "seawater"]:
             raise ValueError(f"Invalid membrane_type: {membrane_type}")
         
+        # Validate flux tolerance if provided
+        if flux_tolerance is not None:
+            if not isinstance(flux_tolerance, (int, float)):
+                raise ValueError(f"flux_tolerance must be a number, got {type(flux_tolerance)}")
+            if flux_tolerance < 0 or flux_tolerance > 1:
+                raise ValueError(f"flux_tolerance must be between 0 and 1, got {flux_tolerance}")
+        
         # Log the request
         logger.info(f"Optimizing RO configuration: {feed_flow_m3h} m³/h, "
                    f"{water_recovery_fraction*100:.0f}% recovery, {membrane_type}")
@@ -105,21 +113,25 @@ async def optimize_ro_configuration(
         parsed_flux_targets = None
         if flux_targets_lmh is not None:
             try:
-                # Try to parse as JSON
-                parsed_value = json.loads(flux_targets_lmh)
-                if isinstance(parsed_value, (int, float)):
-                    parsed_flux_targets = float(parsed_value)
-                elif isinstance(parsed_value, list):
-                    parsed_flux_targets = [float(x) for x in parsed_value]
-                else:
-                    raise ValueError("flux_targets_lmh must be a number or array of numbers")
-            except (json.JSONDecodeError, ValueError) as e:
-                # Try as plain number
+                # First try as plain number (most common case)
+                parsed_flux_targets = float(flux_targets_lmh)
+            except ValueError:
                 try:
-                    parsed_flux_targets = float(flux_targets_lmh)
-                except ValueError:
-                    raise ValueError(f"Invalid flux_targets_lmh format: {flux_targets_lmh}. "
-                                   f"Use '20' for single value or '[22, 18, 15]' for per-stage")
+                    # Try to parse as JSON for array format
+                    parsed_value = json.loads(flux_targets_lmh)
+                    if isinstance(parsed_value, (int, float)):
+                        parsed_flux_targets = float(parsed_value)
+                    elif isinstance(parsed_value, list):
+                        if not parsed_value:
+                            raise ValueError("Flux targets array cannot be empty")
+                        parsed_flux_targets = [float(x) for x in parsed_value]
+                        if not all(x > 0 for x in parsed_flux_targets):
+                            raise ValueError("All flux targets must be positive")
+                    else:
+                        raise ValueError("flux_targets_lmh must be a number or array of numbers")
+                except (json.JSONDecodeError, TypeError) as e:
+                    raise ValueError(f"Invalid flux_targets_lmh format: '{flux_targets_lmh}'. "
+                                   f"Use '20' for single value or '[22, 18, 15]' for per-stage arrays")
         
         # Note: Feed salinity is NOT needed for configuration optimization
         # We use a placeholder value for internal calculations

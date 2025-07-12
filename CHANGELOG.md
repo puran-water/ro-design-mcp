@@ -2,6 +2,21 @@
 
 All notable changes to the RO Design MCP Server will be documented in this file.
 
+## [2.0.1] - 2025-01-12
+
+### Fixed
+- **Flux Parameter Validation**: Fixed critical issues with custom flux targets and tolerance parameters
+- **Type Handling**: Resolved `TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'` 
+- **JSON Parsing**: Improved parsing logic for flux targets to handle both simple numbers and arrays
+- **Global Flux Optimization**: Fixed emergency flux limits to only apply during global optimization (not stage-wise)
+- **Input Validation**: Added comprehensive server-level validation for flux tolerance parameters
+
+### Technical Details
+- Fixed flux tolerance variable assignment in `optimize_vessel_array_configuration()`
+- Improved JSON parsing order in server.py to try plain numbers first, then JSON arrays
+- Added early validation for flux_tolerance type and range checking
+- Updated flux parameter documentation with clearer examples and formats
+
 ## [2.0.0] - 2025-01-12
 
 ### Added

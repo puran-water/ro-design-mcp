@@ -13,8 +13,9 @@ An STDIO MCP server for reverse osmosis (RO) system design optimization. This se
 - Uses industry-standard flux and concentrate flow constraints
 - Returns detailed stage-by-stage design parameters including concentrate flow margins
 - **Strict Recovery Targeting**: Only returns configurations that meet or exceed target recovery (no undershooting)
-- **Flexible Flux Control**: Allows flux below tolerance if necessary to meet recovery
-- Supports custom flux targets and tolerances
+- **Flexible Flux Control**: Allows flux below tolerance if necessary to meet recovery (global optimization only)
+- **Robust Flux Parameters**: Supports custom flux targets and tolerances with comprehensive validation
+- **Multiple Input Formats**: Accepts flux targets as simple numbers ("20") or JSON arrays ("[22, 18, 15]")
 
 ### Tool 2: `simulate_ro_system` (In Development)
 - Runs WaterTAP simulations for detailed performance analysis
@@ -135,10 +136,12 @@ Each configuration in the response includes:
 ### Flux Constraints (LMH)
 - **Default targets:** [18, 15, 12] LMH for stages 1, 2, 3
 - **Default tolerance:** ±10% of target
-- **Flexibility:** Can go below tolerance if needed to meet recovery
+- **Flexibility:** Can go below tolerance if needed to meet recovery (global optimization only)
 - **Custom flux parameters:**
-  - `flux_targets_lmh`: JSON string ("20" or "[22, 18, 15]")
+  - `flux_targets_lmh`: Accepts simple numbers ("20") or JSON arrays ("[22, 18, 15]")
   - `flux_tolerance`: Fraction (0.1 = ±10%)
+- **Input validation:** Comprehensive error checking for format and value ranges
+- **Emergency limits:** Can reduce flux to 70% of target if required for recovery targeting
 
 ### Recovery Guidelines
 - Single stage: Up to ~57% recovery (limited by flux)
