@@ -1,0 +1,104 @@
+# Chemical Properties for Process Modeling
+# This file contains ion and chemical data for MCAS modeling
+
+# Common ions and their properties
+ions:
+  # Cations
+  H:
+    mw: 1.008
+    charge: 1
+    diffusivity: 9.31e-9  # m²/s
+    
+  Na:
+    mw: 22.99
+    charge: 1
+    diffusivity: 1.33e-9
+    
+  K:
+    mw: 39.10
+    charge: 1
+    diffusivity: 1.96e-9
+    
+  Ca:
+    mw: 40.08
+    charge: 2
+    diffusivity: 0.79e-9
+    
+  Mg:
+    mw: 24.31
+    charge: 2
+    diffusivity: 0.71e-9
+    
+  Fe:
+    mw: 55.85
+    charge: 2  # Fe2+
+    diffusivity: 0.72e-9
+    
+  # Anions
+  OH:
+    mw: 17.01
+    charge: -1
+    diffusivity: 5.27e-9
+    
+  Cl:
+    mw: 35.45
+    charge: -1
+    diffusivity: 2.03e-9
+    
+  SO4:
+    mw: 96.06
+    charge: -2
+    diffusivity: 1.07e-9
+    
+  HCO3:
+    mw: 61.02
+    charge: -1
+    diffusivity: 1.18e-9
+    
+  CO3:
+    mw: 60.01
+    charge: -2
+    diffusivity: 0.92e-9
+    
+  NO3:
+    mw: 62.00
+    charge: -1
+    diffusivity: 1.90e-9
+
+# Neutral species
+neutrals:
+  H2O:
+    mw: 18.015
+    diffusivity: 2.30e-9
+    
+  CO2:
+    mw: 44.01
+    diffusivity: 1.92e-9
+
+# Common scaling minerals and their saturation limits
+scaling_minerals:
+  calcite:  # CaCO3
+    name: "Calcium Carbonate"
+    si_limit: 0.3  # Saturation index limit
+    safety_factor: 0.8
+    
+  gypsum:  # CaSO4·2H2O
+    name: "Calcium Sulfate Dihydrate"
+    si_limit: 0.0
+    safety_factor: 0.9
+    
+  barite:  # BaSO4
+    name: "Barium Sulfate"
+    si_limit: 0.0
+    safety_factor: 0.9
+    
+  silica:  # SiO2
+    name: "Silica"
+    solubility_limit: 120  # mg/L as SiO2
+    safety_factor: 0.8
+
+# Charge balance settings
+charge_balance:
+  tolerance: 0.01  # 1% tolerance for electroneutrality
+  adjustment_ion: "Cl"  # Default ion for charge adjustment
+  max_adjustment: 0.1  # Maximum 10% adjustment allowed

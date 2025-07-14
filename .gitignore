@@ -46,7 +46,9 @@ debug.log
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
+*_backup*.ipynb
+*_original.ipynb
+output_notebooks/
 
 # Testing
 .pytest_cache/
@@ -54,9 +56,29 @@ debug.log
 htmlcov/
 .tox/
 .nox/
+test_*.py
+*_test.py
 
 # Documentation
 docs/_build/
+*_TEST_*.md
+*_FIX_*.md
+*_SUMMARY.md
+*_IMPLEMENTATION*.md
+*_SOLUTION*.md
+*_REPORT*.md
+*_improvements*.md
+*_analysis.md
+*_diagnosis.md
+*_debugging*.md
+*_snippet.py
+fix_*.py
+
+# Temporary outputs
+*.html
+results_*.json
+*.tmp
+*.temp
 
 # Package managers
 pip-log.txt

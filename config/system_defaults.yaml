@@ -1,0 +1,61 @@
+# RO Design MCP Server - System Default Configuration
+# This file contains all default parameters used by the optimization algorithms
+
+# Element and vessel specifications
+element:
+  standard_area_m2: 37.16  # 400 ft² standard element
+  elements_per_vessel: 7
+
+# Stage-specific design parameters
+stage_defaults:
+  flux_targets_lmh: [18, 15, 12]  # LMH for stages 1, 2, 3+
+  min_concentrate_flow_m3h: [3.5, 3.8, 4.0]  # m³/h per vessel
+  
+# Flux and recovery tolerances
+tolerances:
+  flux_tolerance: 0.1  # ±10% of target
+  recovery_tolerance: 0.02  # 2% tolerance
+  convergence_tolerance: 0.01  # m³/h for recycle optimization
+
+# Optimization parameters
+optimization:
+  max_stages: 3  # Industry standard maximum
+  max_recycle_ratio: 0.9  # Maximum allowed recycle ratio
+  min_vessels_per_stage: 1
+  max_vessels_per_stage: 100
+
+# Membrane properties by type
+membrane_properties:
+  brackish:
+    A_w: 4.2e-12  # m/s/Pa - Water permeability
+    B_s: 3.5e-8   # m/s - Salt permeability
+    reflect_coeff: 0.95  # Reflection coefficient for SKK model
+    pressure_drop:
+      stage1: 2.0e5  # Pa (2 bar)
+      stage2: 1.5e5  # Pa (1.5 bar)
+      stage3: 1.0e5  # Pa (1 bar)
+    max_pressure: 8270000  # Pa (82.7 bar)
+    base_pressures: [1.5e6, 2.0e6, 2.5e6]  # Pa (15, 20, 25 bar)
+    
+  seawater:
+    A_w: 1.5e-12  # m/s/Pa - Lower for SW membranes
+    B_s: 1.0e-8   # m/s - Lower for SW membranes
+    reflect_coeff: 0.95
+    pressure_drop:
+      stage1: 3.0e5  # Pa (3 bar)
+      stage2: 2.5e5  # Pa (2.5 bar)
+      stage3: 2.0e5  # Pa (2 bar)
+    max_pressure: 12000000  # Pa (120 bar)
+    base_pressures: [4.0e6, 5.0e6, 6.0e6]  # Pa (40, 50, 60 bar)
+
+# Economic parameters (for future use)
+economics:
+  electricity_cost_usd_kwh: 0.07
+  membrane_cost_usd_m2: 30
+  utilization_factor: 0.9
+  pump_efficiency: 0.8
+
+# Logging configuration
+logging:
+  level: INFO  # Options: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

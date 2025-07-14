@@ -225,10 +225,10 @@ def validate_flow_rate(flow_rate: float, param_name: str = "flow_rate") -> None:
         raise ValueError(f"{param_name} must be positive, got {flow_rate}")
 
 
-def validate_salinity(salinity_ppm: float) -> None:
+def validate_salinity(salinity_ppm: float, param_name: str = "salinity") -> None:
     """Validate salinity is within reasonable bounds."""
     if not 100 <= salinity_ppm <= 100000:
-        raise ValueError(f"Salinity {salinity_ppm} ppm is outside reasonable bounds (100-100,000 ppm)")
+        raise ValueError(f"{param_name} {salinity_ppm} ppm is outside reasonable bounds (100-100,000 ppm)")
 
 
 def validate_flux_parameters(flux_targets: Optional[Union[float, List[float]]] = None,

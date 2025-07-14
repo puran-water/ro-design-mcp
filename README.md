@@ -17,11 +17,17 @@ An STDIO MCP server for reverse osmosis (RO) system design optimization. This se
 - **Robust Flux Parameters**: Supports custom flux targets and tolerances with comprehensive validation
 - **Multiple Input Formats**: Accepts flux targets as simple numbers ("20") or JSON arrays ("[22, 18, 15]")
 
-### Tool 2: `simulate_ro_system` (In Development)
+### Tool 2: `simulate_ro_system`
 - Runs WaterTAP simulations for detailed performance analysis
 - Calculates LCOW (Levelized Cost of Water)
 - Provides energy consumption metrics
 - Performs mass balance verification
+- Stage-by-stage pressure and TDS predictions
+- Economic analysis including CAPEX and OPEX
+- Optional pump pressure optimization
+- **MCAS Property Package Support**: Ion-specific modeling for detailed water chemistry
+- **Scaling Prediction**: Saturation indices for common minerals (CaCO₃, CaSO₄, etc.)
+- **Antiscalant Recommendations**: Dosage and product suggestions based on scaling risk
 
 ## Key Improvements (v2.0)
 
@@ -98,6 +104,26 @@ result = await optimize_ro_configuration(
     water_recovery_fraction=0.50,
     flux_targets_lmh="20",  # Applied to all stages
     flux_tolerance=0.1  # ±10%
+)
+
+# Run simulation on selected configuration
+config = result["configurations"][0]  # Select first configuration
+sim_result = await simulate_ro_system(
+    configuration=config,
+    feed_salinity_ppm=5000,
+    feed_temperature_c=25.0,
+    membrane_type="brackish",
+    optimize_pumps=False
+)
+
+# Run simulation with ion-specific modeling (MCAS)
+sim_result = await simulate_ro_system(
+    configuration=config,
+    feed_salinity_ppm=2000,
+    feed_temperature_c=25.0,
+    membrane_type="brackish",
+    feed_ion_composition='{"Na+": 786, "Cl-": 1214}',  # Ion-specific composition
+    optimize_pumps=False
 )
 ```
 
@@ -181,8 +207,41 @@ Each configuration in the response includes:
 - Allows flux below normal limits if necessary
 - Global optimization to achieve precise recovery
 
+## Configuration
+
+The server uses a flexible YAML-based configuration system:
+
+### Configuration Files
+- `config/system_defaults.yaml` - Core system parameters
+- `config/economics.yaml` - Economic analysis parameters
+
+### Environment Variable Overrides
+Any configuration value can be overridden via environment variables:
+```bash
+# Override standard element area
+export RO_DESIGN_ELEMENT_STANDARD_AREA_M2=40.0
+
+# Override electricity cost
+export RO_DESIGN_ENERGY_ELECTRICITY_COST_USD_KWH=0.10
+
+# Override flux tolerance
+export RO_DESIGN_TOLERANCES_FLUX_TOLERANCE=0.15
+```
+
+### Accessing Configuration in Code
+```python
+from utils.config import get_config
+
+# Get a configuration value with fallback
+flux_tolerance = get_config('tolerances.flux_tolerance', 0.1)
+
+# Load entire configuration
+from utils.config import load_config
+config = load_config()
+
 ## Development Status
 
+### Completed Features
 - [x] Tool 1: Configuration optimization
 - [x] Multi-configuration output (all viable stage options)
 - [x] Concentrate recycle for high recovery
@@ -191,16 +250,89 @@ Each configuration in the response includes:
 - [x] Strict recovery target validation
 - [x] Concentrate flow margin reporting
 - [x] Enhanced recycle optimization
-- [ ] Tool 2: WaterTAP simulation integration
-- [ ] Notebook-based reporting
+- [x] Tool 2: WaterTAP simulation structure
+- [x] Comprehensive test suite with pytest
+- [x] Configuration management system (YAML)
+- [x] Input validation and error handling
+- [x] Response formatting utilities
+- [x] GitHub Actions CI/CD pipeline
+- [x] Full WaterTAP integration with Jupyter notebooks
+- [x] MCAS property package for ion speciation
+- [x] Scaling prediction and antiscalant recommendations
+- [x] Elegant initialization strategy for RO models
+- [x] Basic recycle support in notebook templates
+- [x] IDAES/ipopt solver path configuration
 
-## Testing
+### In Progress
+- [ ] Advanced pump optimization (LCOW minimization)
+- [ ] HTML report generation from notebooks
+- [ ] Additional pump performance metrics
+- [ ] Equipment costing breakdowns
 
-The repository includes several test scripts:
-- `test_multi_config.py`: Tests multi-configuration output
-- `test_single_stage.py`: Tests single-stage capabilities
-- `test_margins.py`: Tests concentrate margin calculations
-- `test_effective_recovery.py`: Analyzes recycle requirements
+## Testing and CI/CD
+
+The project includes a comprehensive test suite using pytest with automated CI/CD via GitHub Actions:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=. --cov-report=html
+
+# Run specific test categories
+pytest -m unit          # Unit tests only
+pytest -m integration   # Integration tests
+pytest -m optimization  # Optimization algorithm tests
+
+# Run specific test files
+pytest tests/test_helpers.py
+pytest tests/test_optimize_ro_integration.py
+
+# Test MCP client compatibility
+python test_non_recycle_config.py
+```
+
+### MCP Client Compatibility
+
+When using with MCP clients, be aware of these requirements:
+
+1. **Configuration Format**: The notebook templates support both field naming conventions:
+   - `membrane_area_m2` (original format)
+   - `area_m2` (MCP server format)
+   - `vessel_count` or `n_vessels`
+
+2. **IDAES Extensions**: Required for solver access (ipopt):
+   ```bash
+   # Install IDAES extensions (includes ipopt solver)
+   idaes get-extensions
+   ```
+   The server automatically configures solver paths for notebook execution.
+
+3. **MCAS Property Package**: For ion-specific modeling:
+   - Requires PyNumero installation (see installation section)
+   - Automatically selected when `feed_ion_composition` is provided
+   - Provides detailed ion rejection and scaling predictions
+
+4. **High Recovery with Recycle**: 
+   - Recovery targets above ~85% may use recycle configurations
+   - The recycle template is automatically selected when needed
+   - Supports mixer/separator units for concentrate recycle
+
+### Test Coverage
+- Unit tests for all helper functions
+- Validation and response formatting tests
+- Integration tests for the MCP tools
+- Optimization algorithm behavior tests
+- Configuration management tests
+- Simulation utility tests
+
+### Continuous Integration
+The project uses GitHub Actions for automated testing:
+- Tests run automatically on every push and pull request
+- Python 3.9, 3.10, 3.11, and 3.12 are tested
+- Test results are reported in pull requests
+- See `.github/workflows/test.yml` for configuration
 
 ## License
 

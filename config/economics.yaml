@@ -1,0 +1,34 @@
+# RO Design MCP Server - Economic Parameters Configuration
+# These parameters are used for economic analysis in the simulation tool
+
+# Energy costs
+energy:
+  electricity_cost_usd_kwh: 0.07  # $/kWh
+  pump_efficiency: 0.8  # Fraction (0-1)
+
+# Capital cost parameters
+capital:
+  membrane_cost_usd_m2: 30.0  # $/m²
+  power_equipment_cost_usd_kw: 1000.0  # $/kW installed
+  indirect_cost_factor: 2.5  # Multiplier for indirect costs (installation, piping, etc.)
+
+# Operating cost parameters
+operating:
+  membrane_lifetime_years: 7  # Years before replacement
+  plant_availability: 0.9  # Fraction of year in operation
+  maintenance_fraction: 0.02  # Annual maintenance as fraction of capital cost
+
+# Financial parameters
+financial:
+  discount_rate: 0.08  # Annual discount rate for LCOW calculation
+  plant_lifetime_years: 20  # Economic lifetime of plant
+
+# Chemical costs (for future use)
+chemicals:
+  antiscalant_cost_usd_kg: 2.5
+  cleaning_cost_usd_m2_year: 1.2
+
+# Labor costs (for future use)
+labor:
+  operators_per_shift: 1
+  annual_labor_cost_usd: 50000
