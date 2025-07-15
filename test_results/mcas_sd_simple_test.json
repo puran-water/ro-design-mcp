@@ -1,0 +1,157 @@
+{
+  "config": {
+    "feed_flow_m3h": 100,
+    "feed_salinity_ppm": 4854,
+    "target_recovery": 0.75,
+    "membrane_type": "brackish",
+    "n_stages": 2,
+    "stages": [
+      {
+        "stage_number": 1,
+        "feed_flow_m3h": 100,
+        "permeate_flow_m3h": 55.75910185714286,
+        "concentrate_flow_m3h": 44.24089814285714,
+        "stage_recovery": 0.5575910185714286,
+        "n_vessels": 12,
+        "n_elements": 84,
+        "membrane_area_m2": 3121.44,
+        "design_flux_lmh": 17.86326242283781,
+        "flux_target_lmh": 18,
+        "flux_ratio": 0.9924034679354339,
+        "concentrate_per_vessel_m3h": 3.6867415119047617,
+        "min_concentrate_required": 3.5,
+        "concentrate_flow_ratio": 1.0533547176870748
+      },
+      {
+        "stage_number": 2,
+        "feed_flow_m3h": 44.24089814285714,
+        "permeate_flow_m3h": 19.567908942857144,
+        "concentrate_flow_m3h": 24.672989199999996,
+        "stage_recovery": 0.4423036096525644,
+        "n_vessels": 5,
+        "n_elements": 35,
+        "membrane_area_m2": 1300.6,
+        "design_flux_lmh": 15.045293666659347,
+        "flux_target_lmh": 15,
+        "flux_ratio": 1.00301957777729,
+        "concentrate_per_vessel_m3h": 4.9345978399999995,
+        "min_concentrate_required": 3.8,
+        "concentrate_flow_ratio": 1.2985783789473684
+      }
+    ],
+    "recycle_ratio": 0,
+    "effective_feed_flow_m3h": 100,
+    "actual_effective_feed_m3h": 100,
+    "effective_feed_salinity_ppm": 4854,
+    "array_notation": "12:5",
+    "total_vessels": 17,
+    "total_elements": 119,
+    "total_membrane_area_m2": 4422.04,
+    "total_permeate_flow_m3h": 75.32701080000001,
+    "total_recovery": 0.7532701080000002,
+    "recovery_error": 0.0032701080000001603,
+    "final_concentrate_flow_m3h": 24.672989199999996,
+    "min_flux_ratio": 0.9924034679354339,
+    "max_flux_ratio": 1.00301957777729,
+    "average_flux_ratio": 0.9977115228563619,
+    "average_concentrate_flow_ratio": 1.1759665483172217,
+    "total_flux_deviation": 0.010616109841856014,
+    "average_flux_deviation": 0.005308054920928007,
+    "max_flux_deviation": 0.007596532064566119,
+    "meets_target_recovery": true,
+    "stage_count": 2
+  },
+  "ion_composition": {
+    "Na_+": 1917,
+    "Cl_-": 2937
+  },
+  "sim_results": {
+    "status": "success",
+    "performance": {
+      "total_recovery": 0.749672362784929
+    },
+    "economics": {
+      "total_power_kw": 73.9292962082954,
+      "specific_energy_kwh_m3": 0.986154750772168
+    },
+    "stage_results": [
+      {
+        "stage_number": 1,
+        "feed_pressure_bar": 20.144254011743726,
+        "permeate_flow_m3h": 55.49174041656664,
+        "permeate_tds_ppm": 59.350008982406635,
+        "permeate_ions_mg_l": {
+          "Na_+": 23.72747904213857,
+          "Cl_-": 35.622529940268066
+        },
+        "concentrate_flow_m3h": 44.50825958343335,
+        "concentrate_tds_ppm": 10950.46305992027,
+        "concentrate_ions_mg_l": {
+          "Na_+": 4324.325130037229,
+          "Cl_-": 6626.137929883041
+        },
+        "pump_power_kw": 66.42709726299904,
+        "scaling_indices": {
+          "NaCl": -1.0
+        },
+        "scaling_risks": {
+          "NaCl": "Low"
+        },
+        "antiscalant_recommendation": {
+          "antiscalant_type": "None required",
+          "dosage_ppm": 0,
+          "primary_concern": "None"
+        }
+      },
+      {
+        "stage_number": 2,
+        "feed_pressure_bar": 24.498708705024015,
+        "permeate_flow_m3h": 19.47549586192625,
+        "permeate_tds_ppm": 131.95495306955323,
+        "permeate_ions_mg_l": {
+          "Na_+": 52.59265382005583,
+          "Cl_-": 79.3622992494974
+        },
+        "concentrate_flow_m3h": 25.0327637215071,
+        "concentrate_tds_ppm": 19530.5171351037,
+        "concentrate_ions_mg_l": {
+          "Na_+": 7712.194813977404,
+          "Cl_-": 11818.322321126294
+        },
+        "pump_power_kw": 7.502198945296364,
+        "scaling_indices": {
+          "NaCl": -1.0
+        },
+        "scaling_risks": {
+          "NaCl": "Low"
+        },
+        "antiscalant_recommendation": {
+          "antiscalant_type": "None required",
+          "dosage_ppm": 0,
+          "primary_concern": "None"
+        }
+      }
+    ],
+    "mass_balance": {
+      "feed_flow_m3h": 100.0,
+      "total_permeate_m3h": 74.9672362784929,
+      "final_concentrate_m3h": 25.0327637215071,
+      "error_m3h": 3.552713678800501e-15,
+      "error_percent": 3.552713678800501e-15
+    },
+    "ion_analysis": {
+      "overall_rejection": {
+        "Na_+": 0.9877895991658752,
+        "Cl_-": 0.9880079840783259
+      }
+    },
+    "message": "Simulation with MCAS completed successfully",
+    "property_package": "MCAS",
+    "components_modeled": [
+      "H2O",
+      "Na_+",
+      "Cl_-"
+    ],
+    "initialization_strategy": "elegant"
+  }
+}
