@@ -228,8 +228,8 @@ def extract_notebook_results(notebook_path: str) -> Dict[str, Any]:
         Dictionary containing simulation results
     """
     try:
-        # Read notebook
-        with open(notebook_path, 'r') as f:
+        # Read notebook with UTF-8 encoding to handle special characters
+        with open(notebook_path, 'r', encoding='utf-8') as f:
             nb = nbformat.read(f, as_version=4)
         
         # Find results cell (tagged with "results")
