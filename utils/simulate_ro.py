@@ -23,7 +23,7 @@ def run_ro_simulation(
     feed_temperature_c: float = 25.0,
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
-    optimize_pumps: bool = False,
+    optimize_pumps: bool = True,
     feed_ion_composition: Optional[Dict[str, float]] = None,
     initialization_strategy: str = "sequential"
 ) -> Dict[str, Any]:
@@ -36,7 +36,11 @@ def run_ro_simulation(
         feed_temperature_c: Feed temperature in Celsius
         membrane_type: Type of membrane ("brackish" or "seawater")
         membrane_properties: Optional custom membrane properties
-        optimize_pumps: Whether to optimize pump pressures
+        optimize_pumps: Whether to optimize pump pressures to match recovery targets.
+            Defaults to True to ensure simulations match the configuration tool's
+            hydraulic design. When True, pump pressures are optimized to achieve
+            the target recovery specified in the configuration. When False, pumps
+            are fixed at initial values and recovery is not constrained.
         feed_ion_composition: Optional detailed ion composition in mg/L
         initialization_strategy: Strategy for model initialization
             - "sequential": Default sequential initialization
@@ -52,7 +56,8 @@ def run_ro_simulation(
         notebook_dir = Path(__file__).parent.parent / "notebooks"
         
         # Check if recycle is configured
-        has_recycle = configuration.get('recycle_ratio', 0) > 0
+        recycle_info = configuration.get('recycle_info', {})
+        has_recycle = recycle_info.get('uses_recycle', False) or recycle_info.get('recycle_ratio', 0) > 0
         
         # Choose template based on features needed
         if feed_ion_composition:
@@ -60,9 +65,11 @@ def run_ro_simulation(
             logger.info("Using MCAS template for detailed ion modeling")
             if has_recycle:
                 logger.warning("MCAS template does not yet support recycle. Recycle configuration will be ignored.")
+                logger.warning(f"This will cause recovery mismatch: effective feed {configuration.get('feed_flow_m3h', 0):.1f} m³/h includes {recycle_info.get('recycle_flow_m3h', 0):.1f} m³/h recycle")
+                logger.warning("Stage recoveries will not match configuration targets. Consider using non-MCAS simulation for systems with recycle.")
         elif has_recycle:
             template_path = notebook_dir / "ro_simulation_recycle_template.ipynb"
-            logger.info(f"Using recycle-enabled template (recycle ratio: {configuration['recycle_ratio']*100:.1f}%)")
+            logger.info(f"Using recycle-enabled template (recycle ratio: {recycle_info.get('recycle_ratio', 0)*100:.1f}%)")
         else:
             template_path = notebook_dir / "ro_simulation_template.ipynb"
             logger.info("Using standard template")
@@ -152,6 +159,12 @@ def run_ro_simulation(
             parameters["initialization_strategy"] = initialization_strategy
         
         logger.info(f"Running WaterTAP simulation for {configuration['array_notation']} array")
+        
+        # Log optimize_pumps setting
+        if optimize_pumps:
+            logger.info("Pump optimization enabled - will match configuration recovery targets")
+        else:
+            logger.info("Pump optimization disabled - using fixed pump pressures")
         
         # Execute notebook with papermill
         try:

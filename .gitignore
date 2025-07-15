@@ -58,6 +58,8 @@ htmlcov/
 .nox/
 test_*.py
 *_test.py
+test_*_output.ipynb
+test_output_*.ipynb
 
 # Documentation
 docs/_build/

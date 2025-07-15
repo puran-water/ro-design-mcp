@@ -249,8 +249,8 @@ def initialize_ro_unit_elegant(
     
     # Initialize with state args
     init_options = {
-        'nlp_scaling_method': 'user-scaling',
-        'linear_solver': 'ma27'
+        'nlp_scaling_method': 'user-scaling'
+        # Note: linear_solver should be passed to get_solver(), not here
     }
     
     if verbose:

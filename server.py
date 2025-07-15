@@ -173,7 +173,7 @@ async def simulate_ro_system(
     feed_temperature_c: float = 25.0,
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
-    optimize_pumps: bool = False,
+    optimize_pumps: bool = True,
     feed_ion_composition: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -190,7 +190,7 @@ async def simulate_ro_system(
         feed_temperature_c: Feed temperature in Celsius (default 25°C)
         membrane_type: Type of membrane ("brackish" or "seawater")
         membrane_properties: Optional custom membrane properties
-        optimize_pumps: Whether to optimize pump pressures for minimum LCOW
+        optimize_pumps: Whether to optimize pump pressures to match recovery targets exactly (default True)
         feed_ion_composition: Optional JSON string of ion concentrations in mg/L
                              e.g., '{"Na+": 1200, "Cl-": 2100, "Ca2+": 120}'
     
