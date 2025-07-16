@@ -6,6 +6,14 @@ element:
   standard_area_m2: 37.16  # 400 ft² standard element
   elements_per_vessel: 7
 
+# Membrane dimensions for spiral wound modules
+membrane_dimensions:
+  8040:  # 8" diameter x 40" length standard element
+    diameter_m: 0.2032  # 8 inches
+    length_m: 1.016     # 40 inches
+    active_area_m2: 37.16  # 400 ft² per element
+    elements_per_vessel: 7
+
 # Stage-specific design parameters
 stage_defaults:
   flux_targets_lmh: [18, 15, 12]  # LMH for stages 1, 2, 3+
@@ -25,28 +33,57 @@ optimization:
   max_vessels_per_stage: 100
 
 # Membrane properties by type
+# Note: These are Solution-Diffusion (SD) model parameters only
+# Literature-based values from peer-reviewed sources
 membrane_properties:
-  brackish:
-    A_w: 4.2e-12  # m/s/Pa - Water permeability
-    B_s: 3.5e-8   # m/s - Salt permeability
-    reflect_coeff: 0.95  # Reflection coefficient for SKK model
+  # Dow FilmTec BW30-400 - Standard brackish water membrane
+  bw30_400:
+    A_w: 9.63e-12   # m/s/Pa - Water permeability (MDPI Water 2019, 11(1), 152)
+    B_s: 5.58e-8    # m/s - Salt permeability (MDPI Water 2019, 11(1), 152)
     pressure_drop:
       stage1: 2.0e5  # Pa (2 bar)
       stage2: 1.5e5  # Pa (1.5 bar)
       stage3: 1.0e5  # Pa (1 bar)
-    max_pressure: 8270000  # Pa (82.7 bar)
-    base_pressures: [1.5e6, 2.0e6, 2.5e6]  # Pa (15, 20, 25 bar)
+    max_pressure: 4137000  # Pa (41.37 bar / 600 psi)
+    
+  # Dow FilmTec ECO PRO-400 - High permeability brackish water
+  eco_pro_400:
+    A_w: 1.60e-11   # m/s/Pa - Water permeability (MDPI Water 2019, 11(1), 152)
+    B_s: 4.24e-8    # m/s - Salt permeability (MDPI Water 2019, 11(1), 152)
+    pressure_drop:
+      stage1: 2.0e5  # Pa (2 bar)
+      stage2: 1.5e5  # Pa (1.5 bar)
+      stage3: 1.0e5  # Pa (1 bar)
+    max_pressure: 4137000  # Pa (41.37 bar / 600 psi)
+    
+  # Dow FilmTec FORTILIFE CR100 PRO-400 - Chemical resistant brackish
+  cr100_pro_400:
+    A_w: 1.06e-11   # m/s/Pa - Water permeability (MDPI Water 2019, 11(1), 152)
+    B_s: 4.16e-8    # m/s - Salt permeability (MDPI Water 2019, 11(1), 152)
+    pressure_drop:
+      stage1: 2.0e5  # Pa (2 bar)
+      stage2: 1.5e5  # Pa (1.5 bar)
+      stage3: 1.0e5  # Pa (1 bar)
+    max_pressure: 4137000  # Pa (41.37 bar / 600 psi)
+    
+  # Generic types for backward compatibility
+  brackish:
+    A_w: 9.63e-12   # m/s/Pa - Using BW30-400 as default
+    B_s: 5.58e-8    # m/s - Using BW30-400 as default
+    pressure_drop:
+      stage1: 2.0e5  # Pa (2 bar)
+      stage2: 1.5e5  # Pa (1.5 bar)
+      stage3: 1.0e5  # Pa (1 bar)
+    max_pressure: 4137000  # Pa (41.37 bar)
     
   seawater:
-    A_w: 1.5e-12  # m/s/Pa - Lower for SW membranes
-    B_s: 1.0e-8   # m/s - Lower for SW membranes
-    reflect_coeff: 0.95
+    A_w: 3.0e-12    # m/s/Pa - Typical for SW membranes
+    B_s: 1.5e-8     # m/s - Typical for SW membranes
     pressure_drop:
       stage1: 3.0e5  # Pa (3 bar)
       stage2: 2.5e5  # Pa (2.5 bar)
       stage3: 2.0e5  # Pa (2 bar)
-    max_pressure: 12000000  # Pa (120 bar)
-    base_pressures: [4.0e6, 5.0e6, 6.0e6]  # Pa (40, 50, 60 bar)
+    max_pressure: 8270000  # Pa (82.7 bar)
 
 # Economic parameters (for future use)
 economics:

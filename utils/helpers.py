@@ -403,3 +403,152 @@ def convert_numpy_types(obj):
         return tuple(convert_numpy_types(item) for item in obj)
     else:
         return obj
+
+
+def get_spiral_wound_dimensions(membrane_type: str = "8040") -> Dict[str, float]:
+    """
+    Get standard spiral wound membrane dimensions.
+    
+    Parameters:
+    -----------
+    membrane_type : str
+        Membrane element type (e.g., "8040", "8021", etc.)
+        Currently only supports 8" diameter elements
+        
+    Returns:
+    --------
+    dict : Dictionary containing membrane dimensions in meters
+    """
+    # Import config utilities
+    from .config import get_config
+    
+    # Get all membrane dimensions from config
+    all_membrane_dims = get_config("membrane_dimensions", {})
+    
+    # Get dimensions for the specified membrane type
+    if membrane_type in all_membrane_dims:
+        type_dims = all_membrane_dims[membrane_type]
+        dimensions = {
+            "diameter_m": type_dims.get("diameter_m"),
+            "length_m": type_dims.get("length_m"),
+            "active_area_m2": type_dims.get("active_area_m2"),
+            "elements_per_vessel": type_dims.get("elements_per_vessel")
+        }
+    else:
+        dimensions = {
+            "diameter_m": None,
+            "length_m": None,
+            "active_area_m2": None,
+            "elements_per_vessel": None
+        }
+    
+    # Check if we got valid dimensions
+    if any(v is None for v in dimensions.values()):
+        # Fallback to default 8040 dimensions if type not found
+        dimensions = {
+            "diameter_m": 0.2032,  # 8 inches
+            "length_m": 1.016,     # 40 inches
+            "active_area_m2": 37.16,  # 400 ft²
+            "elements_per_vessel": 7
+        }
+    
+    return dimensions
+
+
+def calculate_spiral_wound_width(
+    total_area_m2: float,
+    length_m: float,
+    n_modules: int = 1
+) -> float:
+    """
+    Calculate required width for spiral wound modules to achieve target area.
+    
+    For spiral wound modules, the area formula is:
+    A = length × 2 × width × n_modules
+    
+    The factor of 2 accounts for the membrane being folded.
+    
+    Parameters:
+    -----------
+    total_area_m2 : float
+        Total target membrane area in m²
+    length_m : float
+        Length of the membrane module(s) in meters
+    n_modules : int
+        Number of modules in parallel (default 1)
+        
+    Returns:
+    --------
+    float : Required width per module in meters
+    """
+    if length_m <= 0 or n_modules <= 0:
+        raise ValueError("Length and number of modules must be positive")
+    
+    # Rearrange area formula: A = L × 2 × W × n
+    # Therefore: W = A / (2 × L × n)
+    width_per_module = total_area_m2 / (2 * length_m * n_modules)
+    
+    return width_per_module
+
+
+def calculate_vessel_arrangement_spiral_wound(
+    total_area_m2: float,
+    n_vessels: int,
+    membrane_type: str = "8040"
+) -> Dict[str, float]:
+    """
+    Calculate spiral wound membrane arrangement for given vessels.
+    
+    Parameters:
+    -----------
+    total_area_m2 : float
+        Total required membrane area
+    n_vessels : int
+        Number of pressure vessels
+    membrane_type : str
+        Type of membrane element (default "8040")
+        
+    Returns:
+    --------
+    dict : Configuration details including length, width, and validation
+    """
+    # Get standard dimensions
+    dimensions = get_spiral_wound_dimensions(membrane_type)
+    
+    element_area = dimensions["active_area_m2"]
+    element_length = dimensions["length_m"]
+    elements_per_vessel = dimensions["elements_per_vessel"]
+    
+    # Calculate total elements needed
+    total_elements_needed = total_area_m2 / element_area
+    elements_per_vessel_calc = total_elements_needed / n_vessels
+    
+    # For spiral wound, elements are in series within a vessel
+    # Total length is element length × number of elements in series
+    total_length = element_length * elements_per_vessel
+    
+    # Calculate required width for WaterTAP model
+    # Area = length × 2 × width × n_vessels (for spiral wound)
+    required_width = calculate_spiral_wound_width(
+        total_area_m2, 
+        total_length, 
+        n_vessels
+    )
+    
+    # Aggregate width for all vessels
+    aggregate_width = required_width * n_vessels
+    
+    return {
+        "membrane_type": membrane_type,
+        "element_area_m2": element_area,
+        "element_length_m": element_length,
+        "elements_per_vessel": elements_per_vessel,
+        "total_elements": int(np.ceil(total_elements_needed)),
+        "vessel_length_m": total_length,
+        "width_per_vessel_m": required_width,
+        "aggregate_width_m": aggregate_width,
+        "total_area_m2": total_area_m2,
+        "n_vessels": n_vessels,
+        "area_check_m2": total_length * 2 * aggregate_width,  # Should equal total_area_m2
+        "configuration": f"{n_vessels} vessels × {elements_per_vessel} elements"
+    }

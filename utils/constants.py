@@ -29,30 +29,58 @@ CONVERGENCE_TOLERANCE = get_config('tolerances.convergence_tolerance', 0.01)
 # Note: This maintains backward compatibility with the old structure
 MEMBRANE_PROPERTIES = {
     'brackish': {
-        'A_w': get_config('membrane_properties.brackish.A_w', 4.2e-12),
-        'B_s': get_config('membrane_properties.brackish.B_s', 3.5e-8),
-        'reflect_coeff': get_config('membrane_properties.brackish.reflect_coeff', 0.95),
+        'A_w': get_config('membrane_properties.brackish.A_w', 9.63e-12),
+        'B_s': get_config('membrane_properties.brackish.B_s', 5.58e-8),
         'pressure_drop_stage1': get_config('membrane_properties.brackish.pressure_drop.stage1', 2e5),
         'pressure_drop_stage2': get_config('membrane_properties.brackish.pressure_drop.stage2', 1.5e5),
         'pressure_drop_stage3': get_config('membrane_properties.brackish.pressure_drop.stage3', 1e5),
-        'max_pressure': get_config('membrane_properties.brackish.max_pressure', 82.7e5)
+        'max_pressure': get_config('membrane_properties.brackish.max_pressure', 4137000)
     },
     'seawater': {
-        'A_w': get_config('membrane_properties.seawater.A_w', 1.5e-12),
-        'B_s': get_config('membrane_properties.seawater.B_s', 1.0e-8),
-        'reflect_coeff': get_config('membrane_properties.seawater.reflect_coeff', 0.95),
+        'A_w': get_config('membrane_properties.seawater.A_w', 3.0e-12),
+        'B_s': get_config('membrane_properties.seawater.B_s', 1.5e-8),
         'pressure_drop_stage1': get_config('membrane_properties.seawater.pressure_drop.stage1', 3e5),
         'pressure_drop_stage2': get_config('membrane_properties.seawater.pressure_drop.stage2', 2.5e5),
         'pressure_drop_stage3': get_config('membrane_properties.seawater.pressure_drop.stage3', 2e5),
-        'max_pressure': get_config('membrane_properties.seawater.max_pressure', 120e5)
+        'max_pressure': get_config('membrane_properties.seawater.max_pressure', 8270000)
     }
 }
 
-# Base operating pressures (Pa)
-BASE_PRESSURES = {
-    'brackish': get_config('membrane_properties.brackish.base_pressures', [15e5, 20e5, 25e5]),
-    'seawater': get_config('membrane_properties.seawater.base_pressures', [40e5, 50e5, 60e5])
-}
+# Function to get membrane properties for any membrane type
+def get_membrane_properties(membrane_type='brackish'):
+    """
+    Get membrane properties for a specific membrane type.
+    
+    Supports both generic types ('brackish', 'seawater') and
+    specific models ('bw30_400', 'eco_pro_400', etc.)
+    
+    Args:
+        membrane_type: Membrane type or model identifier
+        
+    Returns:
+        Dictionary with membrane properties
+    """
+    # Check if it's in the backward-compatible dict
+    if membrane_type in MEMBRANE_PROPERTIES:
+        return MEMBRANE_PROPERTIES[membrane_type]
+    
+    # Otherwise try to get from config
+    membrane_props = get_config(f'membrane_properties.{membrane_type}')
+    if membrane_props:
+        # Convert nested pressure_drop to flat structure for backward compatibility
+        return {
+            'A_w': membrane_props.get('A_w'),
+            'B_s': membrane_props.get('B_s'),
+            'pressure_drop_stage1': membrane_props.get('pressure_drop', {}).get('stage1'),
+            'pressure_drop_stage2': membrane_props.get('pressure_drop', {}).get('stage2'),
+            'pressure_drop_stage3': membrane_props.get('pressure_drop', {}).get('stage3'),
+            'max_pressure': membrane_props.get('max_pressure')
+        }
+    
+    # Default to brackish if not found
+    return MEMBRANE_PROPERTIES['brackish']
+
+# Base operating pressures - REMOVED (not used in SD model)
 
 # Economic parameters
 DEFAULT_ELECTRICITY_COST = get_config('economics.electricity_cost_usd_kwh', 0.07)
