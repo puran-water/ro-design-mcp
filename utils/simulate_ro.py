@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 def run_ro_simulation(
     configuration: Dict[str, Any],
     feed_salinity_ppm: float,
+    feed_ion_composition: Dict[str, float],
     feed_temperature_c: float = 25.0,
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
     optimize_pumps: bool = True,
-    feed_ion_composition: Optional[Dict[str, float]] = None,
     initialization_strategy: str = "sequential"
 ) -> Dict[str, Any]:
     """
@@ -33,6 +33,7 @@ def run_ro_simulation(
     Args:
         configuration: RO configuration from optimize_ro_configuration
         feed_salinity_ppm: Feed water salinity in ppm
+        feed_ion_composition: Required detailed ion composition in mg/L
         feed_temperature_c: Feed temperature in Celsius
         membrane_type: Type of membrane ("brackish" or "seawater")
         membrane_properties: Optional custom membrane properties
@@ -41,7 +42,6 @@ def run_ro_simulation(
             hydraulic design. When True, pump pressures are optimized to achieve
             the target recovery specified in the configuration. When False, pumps
             are fixed at initial values and recovery is not constrained.
-        feed_ion_composition: Optional detailed ion composition in mg/L
         initialization_strategy: Strategy for model initialization
             - "sequential": Default sequential initialization
             - "block_triangular": Block triangularization
@@ -59,20 +59,13 @@ def run_ro_simulation(
         recycle_info = configuration.get('recycle_info', {})
         has_recycle = recycle_info.get('uses_recycle', False) or recycle_info.get('recycle_ratio', 0) > 0
         
-        # Choose template based on features needed
-        if feed_ion_composition:
+        # Choose MCAS template based on recycle configuration
+        if has_recycle:
+            template_path = notebook_dir / "ro_simulation_mcas_recycle_template.ipynb"
+            logger.info(f"Using MCAS recycle-enabled template (recycle ratio: {recycle_info.get('recycle_ratio', 0)*100:.1f}%)")
+        else:
             template_path = notebook_dir / "ro_simulation_mcas_template.ipynb"
             logger.info("Using MCAS template for detailed ion modeling")
-            if has_recycle:
-                logger.warning("MCAS template does not yet support recycle. Recycle configuration will be ignored.")
-                logger.warning(f"This will cause recovery mismatch: effective feed {configuration.get('feed_flow_m3h', 0):.1f} m³/h includes {recycle_info.get('recycle_flow_m3h', 0):.1f} m³/h recycle")
-                logger.warning("Stage recoveries will not match configuration targets. Consider using non-MCAS simulation for systems with recycle.")
-        elif has_recycle:
-            template_path = notebook_dir / "ro_simulation_recycle_template.ipynb"
-            logger.info(f"Using recycle-enabled template (recycle ratio: {recycle_info.get('recycle_ratio', 0)*100:.1f}%)")
-        else:
-            template_path = notebook_dir / "ro_simulation_template.ipynb"
-            logger.info("Using standard template")
         
         if not template_path.exists():
             raise FileNotFoundError(f"Simulation template not found: {template_path}")

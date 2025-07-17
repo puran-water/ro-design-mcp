@@ -170,29 +170,28 @@ async def optimize_ro_configuration(
 async def simulate_ro_system(
     configuration: Dict[str, Any],
     feed_salinity_ppm: float,
+    feed_ion_composition: str,
     feed_temperature_c: float = 25.0,
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
-    optimize_pumps: bool = True,
-    feed_ion_composition: Optional[str] = None
+    optimize_pumps: bool = True
 ) -> Dict[str, Any]:
     """
-    Run WaterTAP simulation for the specified RO configuration.
+    Run WaterTAP simulation for the specified RO configuration using MCAS property package.
     
-    This tool creates a WaterTAP model, runs the simulation, and returns
-    performance metrics including LCOW, energy consumption, and detailed
-    stage results. When ion composition is provided, uses MCAS property
-    package for detailed ion speciation and scaling prediction.
+    This tool creates a WaterTAP model with detailed ion modeling, runs the simulation,
+    and returns performance metrics including LCOW, energy consumption, detailed
+    stage results, ion speciation, and scaling prediction.
     
     Args:
         configuration: Output from optimize_ro_configuration tool
         feed_salinity_ppm: Feed water salinity in ppm
+        feed_ion_composition: Required JSON string of ion concentrations in mg/L
+                             e.g., '{"Na+": 1200, "Cl-": 2100, "Ca2+": 120}'
         feed_temperature_c: Feed temperature in Celsius (default 25°C)
         membrane_type: Type of membrane ("brackish" or "seawater")
         membrane_properties: Optional custom membrane properties
         optimize_pumps: Whether to optimize pump pressures to match recovery targets exactly (default True)
-        feed_ion_composition: Optional JSON string of ion concentrations in mg/L
-                             e.g., '{"Na+": 1200, "Cl-": 2100, "Ca2+": 120}'
     
     Returns:
         Dictionary containing:
@@ -208,17 +207,11 @@ async def simulate_ro_system(
     
     Example:
         ```python
-        # Basic simulation
+        # MCAS simulation with ion composition (required)
         result = await simulate_ro_system(
             configuration=config_from_optimization,
             feed_salinity_ppm=5000,
-            feed_temperature_c=25.0
-        )
-        
-        # With ion composition for detailed modeling
-        result = await simulate_ro_system(
-            configuration=config_from_optimization,
-            feed_salinity_ppm=5000,
+            feed_temperature_c=25.0,
             feed_ion_composition='{"Na+": 1200, "Ca2+": 120, "Mg2+": 60, "Cl-": 2100, "SO4-2": 200, "HCO3-": 150}'
         )
         ```
@@ -242,22 +235,20 @@ async def simulate_ro_system(
         if membrane_type not in ["brackish", "seawater"]:
             raise ValueError(f"Invalid membrane_type: {membrane_type}")
         
-        # Parse ion composition if provided
-        parsed_ion_composition = None
-        if feed_ion_composition:
-            try:
-                parsed_ion_composition = json.loads(feed_ion_composition)
-                # Validate it's a dictionary with numeric values
-                if not isinstance(parsed_ion_composition, dict):
-                    raise ValueError("Ion composition must be a JSON object")
-                for ion, conc in parsed_ion_composition.items():
-                    if not isinstance(conc, (int, float)) or conc < 0:
-                        raise ValueError(f"Invalid concentration for {ion}: {conc}")
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
+        # Parse ion composition (required)
+        try:
+            parsed_ion_composition = json.loads(feed_ion_composition)
+            # Validate it's a dictionary with numeric values
+            if not isinstance(parsed_ion_composition, dict):
+                raise ValueError("Ion composition must be a JSON object")
+            for ion, conc in parsed_ion_composition.items():
+                if not isinstance(conc, (int, float)) or conc < 0:
+                    raise ValueError(f"Invalid concentration for {ion}: {conc}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
         
         # Log the request
-        logger.info(f"Running WaterTAP simulation for {configuration.get('array_notation', 'unknown')} array")
+        logger.info(f"Running WaterTAP MCAS simulation for {configuration.get('array_notation', 'unknown')} array")
         
         # Fix configuration structure - add feed_flow_m3h at root level if missing
         if "feed_flow_m3h" not in configuration:
@@ -284,11 +275,11 @@ async def simulate_ro_system(
         sim_results = run_ro_simulation(
             configuration=configuration,
             feed_salinity_ppm=feed_salinity_ppm,
+            feed_ion_composition=parsed_ion_composition,
             feed_temperature_c=feed_temperature_c,
             membrane_type=membrane_type,
             membrane_properties=membrane_properties,
-            optimize_pumps=optimize_pumps,
-            feed_ion_composition=parsed_ion_composition
+            optimize_pumps=optimize_pumps
         )
         
         # If simulation was successful, add economic analysis
