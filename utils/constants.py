@@ -87,3 +87,81 @@ DEFAULT_ELECTRICITY_COST = get_config('economics.electricity_cost_usd_kwh', 0.07
 DEFAULT_MEMBRANE_COST = get_config('economics.membrane_cost_usd_m2', 30)
 DEFAULT_UTILIZATION_FACTOR = get_config('economics.utilization_factor', 0.9)
 DEFAULT_PUMP_EFFICIENCY = get_config('economics.pump_efficiency', 0.8)
+
+# Ion composition constants (mg/L) for typical water types
+TYPICAL_COMPOSITIONS = {
+    "brackish": {
+        "Na+": 1200,
+        "Ca2+": 120,
+        "Mg2+": 60,
+        "K+": 20,
+        "Cl-": 2100,
+        "SO4-2": 200,
+        "HCO3-": 150,
+        "SiO3-2": 10
+    },
+    "seawater": {
+        "Na+": 10800,
+        "Ca2+": 420,
+        "Mg2+": 1300,
+        "K+": 400,
+        "Sr2+": 8,
+        "Cl-": 19400,
+        "SO4-2": 2700,
+        "HCO3-": 140,
+        "Br-": 70,
+        "F-": 1.3
+    }
+}
+
+# Molecular weights (g/mol) for ions
+MW_DATA = {
+    "H2O": 18.015,
+    "Na_+": 22.990,
+    "Ca_2+": 40.078,
+    "Mg_2+": 24.305,
+    "K_+": 39.098,
+    "Sr_2+": 87.620,
+    "Cl_-": 35.453,
+    "SO4_2-": 96.066,
+    "HCO3_-": 61.017,
+    "SiO3_2-": 76.083,
+    "Br_-": 79.904,
+    "F_-": 18.998
+}
+
+# Ion charges
+CHARGE_MAP = {
+    "Na_+": 1,
+    "Ca_2+": 2,
+    "Mg_2+": 2,
+    "K_+": 1,
+    "Sr_2+": 2,
+    "Cl_-": -1,
+    "SO4_2-": -2,
+    "HCO3_-": -1,
+    "SiO3_2-": -2,
+    "Br_-": -1,
+    "F_-": -1
+}
+
+# Stokes radii (m) for common ions
+STOKES_RADIUS_DATA = {
+    "Na_+": 1.84e-10,
+    "Ca_2+": 3.09e-10,
+    "Mg_2+": 3.47e-10,
+    "K_+": 1.25e-10,
+    "Sr_2+": 3.09e-10,
+    "Cl_-": 1.21e-10,
+    "SO4_2-": 2.30e-10,
+    "HCO3_-": 1.56e-10,
+    "SiO3_2-": 2.50e-10,
+    "Br_-": 1.18e-10,
+    "F_-": 1.66e-10
+}
+
+# Default salt passage for different membrane types
+DEFAULT_SALT_PASSAGE = {
+    "brackish": 0.015,  # 1.5%
+    "seawater": 0.003   # 0.3%
+}

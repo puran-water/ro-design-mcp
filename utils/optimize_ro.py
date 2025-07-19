@@ -722,7 +722,9 @@ def optimize_vessel_array_configuration(
                 'concentrate_flow_m3h': stage_data['concentrate_flow'],
                 'stage_recovery': stage_data['stage_recovery'],
                 'n_vessels': stage_data['n_vessels'],
+                'vessel_count': stage_data['n_vessels'],  # Add vessel_count for compatibility
                 'n_elements': stage_data['n_vessels'] * elements_per_vessel,
+                'elements_per_vessel': elements_per_vessel,  # Add for model builder
                 'membrane_area_m2': stage_data['n_vessels'] * vessel_area,
                 'design_flux_lmh': stage_data['flux'],
                 'flux_target_lmh': stage_data['flux_target'],

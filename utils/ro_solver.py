@@ -1,0 +1,694 @@
+"""
+RO model initialization and solving utilities.
+
+This module provides functions to initialize and solve WaterTAP RO models
+using various initialization strategies.
+"""
+
+from typing import Dict, Any, Optional
+import logging
+import sys
+import warnings
+from pyomo.environ import (
+    Constraint, TerminationCondition, value, Block, Var, units as pyunits
+)
+
+# Suppress specific warnings that corrupt MCP protocol
+warnings.filterwarnings("ignore", message=".*export suffix 'scaling_factor'.*", module="pyomo.repn.plugins.nl_writer")
+from pyomo.core.plugins.transform.relax_integrality import RelaxIntegrality
+from idaes.core.util.model_statistics import degrees_of_freedom
+from idaes.core.util.initialization import propagate_state
+# BlockTriangularizationInitializer might not be available in all IDAES versions
+try:
+    from idaes.core.util.initialization import BlockTriangularizationInitializer
+except ImportError:
+    BlockTriangularizationInitializer = None
+from watertap.core.solvers import get_solver
+
+# Import the required function from ro_initialization - avoid circular imports
+from .ro_initialization import (
+    calculate_required_pressure,
+    initialize_pump_with_pressure,
+    initialize_ro_unit_elegant,
+    calculate_concentrate_tds
+)
+
+# Get logger configured for MCP
+from .logging_config import get_configured_logger
+logger = get_configured_logger(__name__)
+
+
+def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
+    """
+    Initialize and solve RO model with MCAS property package and recycle.
+    
+    This function properly handles pump optimization by:
+    1. First initializing with fixed pump pressures for stability
+    2. Then unfixing pumps and adding recovery constraints if optimize_pumps=True
+    
+    Returns:
+        dict: Results dictionary with 'status', 'model', 'message' keys
+    """
+    try:
+        m = model
+        n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+        
+        # Check for recycle
+        recycle_info = config_data.get('recycle_info', {})
+        has_recycle = recycle_info.get('uses_recycle', False)
+        recycle_ratio = recycle_info.get('recycle_ratio', 0)
+        
+        logger.info("=== Starting MCAS Recycle Initialization ===")
+        logger.info(f"Number of stages: {n_stages}")
+        logger.info(f"Has recycle: {has_recycle}")
+        logger.info(f"Recycle ratio: {recycle_ratio}")
+        logger.info(f"Optimize pumps: {optimize_pumps}")
+        
+        # Initialize feed (handle both naming conventions)
+        if hasattr(m.fs, "fresh_feed"):
+            feed_blk = m.fs.fresh_feed
+        elif hasattr(m.fs, "feed"):
+            feed_blk = m.fs.feed
+            logger.info("Note: Using 'feed' attribute - consider updating to 'fresh_feed' in future")
+        else:
+            raise AttributeError("Flowsheet missing inlet feed stream (expected 'fresh_feed' or 'feed')")
+        feed_blk.initialize()
+        logger.info("Feed initialized")
+        
+        # Initialize recycle system first (if present)
+        if has_recycle:
+            logger.info("\n=== Initializing Recycle System ===")
+            
+            # Start with zero recycle for initial solution
+            logger.info("Phase 1: Initializing with zero recycle")
+            
+            # Temporarily set recycle to zero
+            # Only fix one split fraction - the other is calculated from sum = 1 constraint
+            m.fs.recycle_split.split_fraction[0, "recycle"].fix(0)
+            
+            # Initialize feed mixer with only fresh feed
+            # First propagate fresh feed to mixer
+            propagate_state(arc=m.fs.fresh_to_mixer)
+            
+            # Phase 1: Initialize with zero recycle
+            # The fresh feed has already been propagated via propagate_state(arc=m.fs.fresh_to_mixer)
+            
+            # Initialize recycle inlet with zero/epsilon flows to avoid uninitialized values
+            # Get fresh feed state to use as template
+            fresh_state = m.fs.fresh_feed.outlet
+            recycle_inlet = m.fs.feed_mixer.recycle
+            
+            # Set recycle inlet to have epsilon flows (near zero)
+            for comp in m.fs.properties.component_list:
+                fresh_flow = value(fresh_state.flow_mass_phase_comp[0, 'Liq', comp])
+                # Use very small fraction of fresh flow as epsilon
+                recycle_inlet.flow_mass_phase_comp[0, 'Liq', comp].set_value(fresh_flow * 1e-8)
+            
+            # Set temperature and pressure to match fresh feed
+            recycle_inlet.temperature[0].set_value(value(fresh_state.temperature[0]))
+            recycle_inlet.pressure[0].set_value(value(fresh_state.pressure[0]))
+            
+            # Deactivate pressure equality constraints during initialization if they exist
+            # Note: When momentum_mixing_type=MomentumMixingType.none, we use custom constraint
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.deactivate()
+            
+            # Temporarily deactivate our custom pressure constraint during initialization
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.deactivate()
+            
+            # Now initialize mixer with both inlets having valid values
+            m.fs.feed_mixer.initialize()
+            
+            # Reactivate constraints
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.activate()
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.activate()
+            
+            logger.info("Feed mixer initialized with zero recycle")
+            
+            # CRITICAL: Re-propagate state from mixer after initialization
+            # The mixer has now calculated its outlet based on the inlets
+            propagate_state(arc=m.fs.mixer_to_pump1)
+            
+            # Log the actual mixer outlet to verify
+            mixer_h2o = value(m.fs.feed_mixer.outlet.flow_mass_phase_comp[0, 'Liq', 'H2O'])
+            mixer_tds = 0
+            for comp in m.fs.properties.solute_set:
+                mixer_tds += value(m.fs.feed_mixer.outlet.flow_mass_phase_comp[0, 'Liq', comp])
+            mixer_tds_ppm = (mixer_tds / (mixer_h2o + mixer_tds)) * 1e6 if (mixer_h2o + mixer_tds) > 0 else 0
+            logger.info(f"Mixer outlet: H2O={mixer_h2o:.4f} kg/s, TDS={mixer_tds:.6f} kg/s, TDS={mixer_tds_ppm:.0f} ppm")
+        else:
+            # No recycle case - still need to initialize mixer properly
+            logger.info("Initializing mixer for non-recycle case...")
+            
+            # First propagate fresh feed to mixer
+            propagate_state(arc=m.fs.fresh_to_mixer)
+            
+            # Initialize recycle inlet with epsilon flows
+            fresh_state = m.fs.fresh_feed.outlet
+            recycle_inlet = m.fs.feed_mixer.recycle
+            
+            for comp in m.fs.properties.component_list:
+                fresh_flow = value(fresh_state.flow_mass_phase_comp[0, 'Liq', comp])
+                recycle_inlet.flow_mass_phase_comp[0, 'Liq', comp].set_value(fresh_flow * 1e-8)
+            
+            recycle_inlet.temperature[0].set_value(value(fresh_state.temperature[0]))
+            recycle_inlet.pressure[0].set_value(value(fresh_state.pressure[0]))
+            
+            # Initialize mixer
+            # Note: When momentum_mixing_type=MomentumMixingType.none, we use custom constraint
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.deactivate()
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.deactivate()
+                
+            m.fs.feed_mixer.initialize()
+            
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.activate()
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.activate()
+            
+            # Propagate from mixer to pump
+            propagate_state(arc=m.fs.mixer_to_pump1)
+            
+            logger.info("Feed mixer initialized for non-recycle case")
+        
+        # Get feed TDS for pressure calculations
+        # Use the same feed_blk we initialized earlier
+        if hasattr(m.fs, "fresh_feed"):
+            feed_outlet = m.fs.fresh_feed.outlet
+        elif hasattr(m.fs, "feed"):
+            feed_outlet = m.fs.feed.outlet
+        else:
+            raise AttributeError("Flowsheet missing inlet feed stream")
+        
+        feed_flows = {}
+        for comp in m.fs.properties.solute_set | {'H2O'}:
+            feed_flows[comp] = value(feed_outlet.flow_mass_phase_comp[0, 'Liq', comp])
+        
+        h2o_flow = feed_flows['H2O']
+        tds_flow = sum(v for k, v in feed_flows.items() if k != 'H2O')
+        feed_tds_ppm = (tds_flow / (h2o_flow + tds_flow)) * 1e6
+        
+        logger.info(f"Feed TDS: {feed_tds_ppm:.0f} ppm")
+        
+        # Validate feed TDS is reasonable
+        if feed_tds_ppm > 100000:
+            logger.warning(f"Calculated feed TDS ({feed_tds_ppm:.0f} ppm) exceeds 100,000 ppm")
+        elif 'feed_salinity_ppm' in config_data:
+            expected_tds = config_data['feed_salinity_ppm']
+            if abs(feed_tds_ppm - expected_tds) / expected_tds > 0.1:
+                logger.warning(f"Calculated TDS ({feed_tds_ppm:.0f} ppm) differs from expected ({expected_tds:.0f} ppm) by >10%")
+        
+        # Determine default salt passage for this water type
+        default_salt_passage = 0.015  # Default 1.5% for brackish water
+        
+        # Initialize stages with elegant initialization
+        logger.info("\n=== Initializing RO Stages ===")
+        
+        current_tds_ppm = feed_tds_ppm
+        for i in range(1, n_stages + 1):
+            logger.info(f"\n--- Stage {i} ---")
+            
+            pump = getattr(m.fs, f"pump{i}")
+            ro = getattr(m.fs, f"ro_stage{i}")
+            
+            # Get stage recovery target
+            stage_data = config_data['stages'][i-1]
+            target_recovery = stage_data.get('stage_recovery', 0.5)
+            
+            # Propagate to pump (already done for stage 1)
+            if i > 1:
+                propagate_state(arc=getattr(m.fs, f"ro_stage{i-1}_to_pump{i}"))
+            
+            # Get membrane properties for pressure calculation
+            membrane_area = value(ro.area)
+            # A_comp is indexed by time and solvent_set
+            membrane_permeability = value(ro.A_comp[0, 'H2O'])
+            
+            # Get feed flow to this stage
+            if i == 1:
+                # First stage - use mixer outlet
+                feed_flow = value(sum(
+                    m.fs.feed_mixer.outlet.flow_mass_phase_comp[0, 'Liq', comp]
+                    for comp in m.fs.properties.component_list
+                ))
+            else:
+                # Later stages - use previous stage concentrate
+                prev_ro = getattr(m.fs, f"ro_stage{i-1}")
+                feed_flow = value(sum(
+                    prev_ro.retentate.flow_mass_phase_comp[0, 'Liq', comp]
+                    for comp in m.fs.properties.component_list
+                ))
+            
+            # Calculate required pressure with membrane awareness
+            min_driving = 15e5 if target_recovery < 0.5 else 20e5
+            if target_recovery > 0.7:
+                min_driving = 25e5
+            
+            required_pressure = calculate_required_pressure(
+                current_tds_ppm,
+                target_recovery,
+                permeate_pressure=101325,
+                min_driving_pressure=min_driving,
+                pressure_drop=0.5e5,
+                salt_passage=default_salt_passage,  # ALWAYS pass salt_passage
+                membrane_permeability=membrane_permeability,
+                membrane_area=membrane_area,
+                feed_flow=feed_flow
+            )
+            
+            # Add safety factor
+            safety_factor = 1.1 + 0.1 * (i - 1) + 0.2 * max(0, target_recovery - 0.5)
+            required_pressure = min(required_pressure * safety_factor, 80e5)
+            
+            # Initialize pump with fixed pressure
+            initialize_pump_with_pressure(pump, required_pressure)
+            
+            # Propagate to RO (handle both arc naming conventions)
+            arc_name_stage = f"pump{i}_to_ro_stage{i}"
+            arc_name_simple = f"pump{i}_to_ro{i}"
+            if hasattr(m.fs, arc_name_stage):
+                propagate_state(arc=getattr(m.fs, arc_name_stage))
+            elif hasattr(m.fs, arc_name_simple):
+                propagate_state(arc=getattr(m.fs, arc_name_simple))
+            else:
+                raise AttributeError(f"Flowsheet missing pump to RO arc for stage {i} (tried {arc_name_stage} and {arc_name_simple})")
+            
+            # Initialize RO with elegant approach
+            initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
+            
+            # Update TDS for next stage
+            current_tds_ppm = calculate_concentrate_tds(
+                current_tds_ppm, 
+                target_recovery, 
+                salt_passage=default_salt_passage  # ALWAYS pass salt_passage
+            )
+            
+            # Propagate permeate to product (handle both arc naming conventions)
+            if i == 1:
+                # First stage has different naming patterns
+                if hasattr(m.fs, "ro_stage1_perm_to_prod"):
+                    propagate_state(arc=m.fs.ro_stage1_perm_to_prod)
+                elif hasattr(m.fs, "ro1_perm_to_prod"):
+                    propagate_state(arc=m.fs.ro1_perm_to_prod)
+                else:
+                    raise AttributeError(f"Flowsheet missing permeate arc for stage 1")
+            else:
+                # Later stages
+                arc_name_stage = f"ro_stage{i}_perm_to_prod{i}"
+                arc_name_simple = f"ro{i}_perm_to_prod{i}"
+                if hasattr(m.fs, arc_name_stage):
+                    propagate_state(arc=getattr(m.fs, arc_name_stage))
+                elif hasattr(m.fs, arc_name_simple):
+                    propagate_state(arc=getattr(m.fs, arc_name_simple))
+                else:
+                    raise AttributeError(f"Flowsheet missing permeate arc for stage {i}")
+            
+            getattr(m.fs, f"stage_product{i}").initialize()
+        
+        # Complete initialization of recycle components if present
+        if has_recycle:
+            # Initialize recycle splitter and disposal
+            final_stage = n_stages
+            propagate_state(arc=m.fs.final_conc_to_split)
+            m.fs.recycle_split.initialize()
+            
+            propagate_state(arc=m.fs.split_to_disposal)
+            m.fs.disposal_product.initialize()
+            
+            # Now set actual recycle ratio
+            recycle_split_ratio = recycle_info.get('recycle_split_ratio', 0.5)
+            logger.info(f"\nPhase 2: Setting recycle split ratio to {recycle_split_ratio}")
+            # Only fix one split fraction - the other is calculated from sum = 1 constraint
+            m.fs.recycle_split.split_fraction[0, "recycle"].fix(recycle_split_ratio)
+            
+            # Re-initialize splitter
+            m.fs.recycle_split.initialize()
+            
+            # Phase 2: Enable recycle and reconverge
+            # Now unfix mixer states for proper recycle mixing
+            m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp.unfix()
+            m.fs.feed_mixer.mixed_state[0].temperature.unfix()
+            m.fs.feed_mixer.mixed_state[0].pressure.unfix()
+            
+            # Re-initialize mixer with recycle active
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.deactivate()
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.deactivate()
+                
+            m.fs.feed_mixer.initialize()
+            
+            if hasattr(m.fs.feed_mixer, 'pressure_equality_constraints'):
+                m.fs.feed_mixer.pressure_equality_constraints.activate()
+            if hasattr(m.fs, 'mixer_pressure_constraint'):
+                m.fs.mixer_pressure_constraint.activate()
+        else:
+            # Initialize disposal product for non-recycle case (unified architecture)
+            final_stage = n_stages
+            propagate_state(arc=m.fs.final_conc_to_split)
+            m.fs.recycle_split.initialize()
+            
+            propagate_state(arc=m.fs.split_to_disposal)
+            m.fs.disposal_product.initialize()
+        
+        # Check initial solution
+        logger.info("\n=== Checking Initial Solution ===")
+        for i in range(1, n_stages + 1):
+            ro = getattr(m.fs, f"ro_stage{i}")
+            h2o_in = value(ro.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O'])
+            h2o_perm = value(ro.permeate.flow_mass_phase_comp[0, 'Liq', 'H2O'])
+            recovery = h2o_perm / h2o_in if h2o_in > 0 else 0
+            logger.info(f"Stage {i} initial recovery: {recovery:.3f}")
+        
+        # If optimize_pumps, unfix pumps and add recovery constraints
+        if optimize_pumps:
+            logger.info("\n=== Setting up Pump Optimization ===")
+            
+            # First verify we have a feasible initial solution
+            # Get solver (no parameters to get_solver)
+            solver = get_solver()
+            
+            logger.info("Verifying initial solution...")
+            results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+            
+            if results.solver.termination_condition != TerminationCondition.optimal:
+                logger.warning(f"Initial solution not optimal: {results.solver.termination_condition}")
+                logger.warning("Proceeding with pump optimization anyway...")
+            
+            # Now unfix pumps and add recovery constraints
+            for i in range(1, n_stages + 1):
+                pump = getattr(m.fs, f"pump{i}")
+                ro = getattr(m.fs, f"ro_stage{i}")
+                stage_data = config_data['stages'][i-1]
+                target_recovery = stage_data.get('stage_recovery', 0.5)
+                
+                # Unfix pump pressure
+                pump.outlet.pressure[0].unfix()
+                logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
+                
+                # Add recovery constraint
+                constraint_name = f"recovery_constraint_stage{i}"
+                setattr(m.fs, constraint_name,
+                        Constraint(expr=ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'] == target_recovery))
+                logger.info(f"Stage {i}: Added recovery constraint for {target_recovery:.3f}")
+            
+            # Check degrees of freedom
+            dof = degrees_of_freedom(m)
+            logger.info(f"\nDegrees of freedom after adding constraints: {dof}")
+            
+            if dof != 0:
+                logger.warning(f"Expected 0 degrees of freedom, got {dof}")
+        
+        # Solve the model
+        logger.info("\n=== Solving Model ===")
+        # Get solver (no parameters to get_solver)
+        solver = get_solver()
+        
+        if has_recycle and optimize_pumps:
+            # Use successive substitution for recycle with pump optimization
+            logger.info("Using successive substitution for recycle convergence")
+            
+            max_iter = 20
+            tol = 1e-5
+            
+            for iteration in range(max_iter):
+                # Store previous mixed flow
+                prev_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
+                
+                # Solve model
+                results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+                
+                if results.solver.termination_condition != TerminationCondition.optimal:
+                    logger.error(f"Iteration {iteration+1}: Solver failed - {results.solver.termination_condition}")
+                    raise RuntimeError(f"Solver failed during recycle iteration {iteration+1}")
+                
+                # Check convergence
+                curr_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
+                rel_change = abs(curr_flow - prev_flow) / prev_flow if prev_flow > 0 else 1
+                
+                logger.info(f"Iteration {iteration+1}: Mixed flow = {curr_flow:.4f} kg/s, relative change = {rel_change:.2e}")
+                
+                if rel_change < tol:
+                    logger.info(f"Converged after {iteration+1} iterations")
+                    break
+            else:
+                logger.warning(f"Did not converge after {max_iter} iterations")
+        else:
+            # Single solve for non-recycle or fixed pump cases
+            results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+            
+            if results.solver.termination_condition != TerminationCondition.optimal:
+                logger.error(f"Solver failed: {results.solver.termination_condition}")
+                raise RuntimeError(f"Solver failed: {results.solver.termination_condition}")
+        
+        logger.info("\n=== Solution Complete ===")
+        
+        # Report final recoveries and pressures
+        for i in range(1, n_stages + 1):
+            pump = getattr(m.fs, f"pump{i}")
+            ro = getattr(m.fs, f"ro_stage{i}")
+            
+            pressure = value(pump.outlet.pressure[0]) / 1e5  # bar
+            recovery = value(ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'])
+            
+            logger.info(f"Stage {i}: Pressure = {pressure:.1f} bar, Recovery = {recovery:.3f}")
+        
+        # Return results dictionary for consistency with notebooks
+        return {
+            "status": "success",
+            "model": m,
+            "solver_results": results if 'results' in locals() else None,
+            "message": "Model initialized and solved successfully",
+            "termination_condition": str(results.solver.termination_condition) if 'results' in locals() else "optimal"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in initialize_and_solve_mcas: {str(e)}")
+        return {
+            "status": "error",
+            "model": None,
+            "solver_results": None,
+            "message": f"Initialization/solving failed: {str(e)}",
+            "termination_condition": "error",
+            "error": str(e)
+        }
+
+def initialize_model_sequential(m, config_data):
+    """
+    Fallback sequential initialization (original method).
+    """
+    # Initialize feed - handle both naming conventions
+    if hasattr(m.fs, "fresh_feed"):
+        m.fs.fresh_feed.initialize()
+    elif hasattr(m.fs, "feed"):
+        m.fs.feed.initialize()
+    else:
+        raise AttributeError("Flowsheet missing feed block (expected 'fresh_feed' or 'feed')")
+    
+    # Initialize stages sequentially
+    for i in range(1, config_data['stage_count'] + 1):
+        logger.info(f"\nInitializing Stage {i}...")
+        
+        # Initialize pump
+        pump = getattr(m.fs, f"pump{i}")
+        
+        # Set outlet pressure based on stage and expected osmotic pressure
+        if i == 1:
+            pump.outlet.pressure.fix(15 * pyunits.bar)  # 15 bar
+        elif i == 2:
+            pump.outlet.pressure.fix(25 * pyunits.bar)  # 25 bar (higher due to concentration)
+        else:
+            pump.outlet.pressure.fix(35 * pyunits.bar)  # 35 bar
+        
+        pump.efficiency_pump.fix(0.8)
+        
+        # Propagate state from previous unit
+        if i == 1:
+            # Check for unified architecture (mixer path) first
+            if hasattr(m.fs, "mixer_to_pump1"):
+                propagate_state(arc=m.fs.mixer_to_pump1)
+            elif hasattr(m.fs, "feed_to_pump1"):
+                propagate_state(arc=m.fs.feed_to_pump1)
+            else:
+                raise AttributeError("No arc found from feed/mixer to pump1")
+        else:
+            arc_name = f"ro_stage{i-1}_to_pump{i}"
+            propagate_state(arc=getattr(m.fs, arc_name))
+        
+        pump.initialize()
+        
+        # Initialize RO
+        ro = getattr(m.fs, f"ro_stage{i}")
+        
+        # Propagate state from pump
+        if i == 1:
+            propagate_state(arc=m.fs.pump1_to_ro_stage1)
+        else:
+            arc_name = f"pump{i}_to_ro_stage{i}"
+            propagate_state(arc=getattr(m.fs, arc_name))
+        
+        # Initialize RO
+        ro.initialize()
+        
+        # Initialize stage product
+        if i == 1:
+            propagate_state(arc=m.fs.ro_stage1_perm_to_prod)
+        else:
+            arc_name = f"ro_stage{i}_perm_to_prod{i}"
+            propagate_state(arc=getattr(m.fs, arc_name))
+        
+        getattr(m.fs, f"stage_product{i}").initialize()
+    
+    # Initialize final concentrate product
+    propagate_state(arc=m.fs.final_conc_arc)
+    m.fs.concentrate_product.initialize()
+    
+    logger.info("\nSequential initialization complete.")
+
+
+def initialize_with_block_triangularization(m, config_data):
+    """
+    Initialize using block triangularization for strongly connected components.
+    """
+    logger.info("Initializing with block triangularization...")
+    
+    if BlockTriangularizationInitializer is None:
+        logger.warning("BlockTriangularizationInitializer not available, falling back to sequential initialization")
+        return initialize_model_sequential(m, config_data)
+    
+    # Create initializer
+    initializer = BlockTriangularizationInitializer()
+    
+    # Initialize each unit in sequence
+    units = [m.fs.feed]
+    for i in range(1, config_data['stage_count'] + 1):
+        units.append(getattr(m.fs, f"pump{i}"))
+        units.append(getattr(m.fs, f"ro_stage{i}"))
+        units.append(getattr(m.fs, f"stage_product{i}"))
+    units.append(m.fs.concentrate_product)
+    
+    for unit in units:
+        try:
+            initializer.initialize(unit)
+        except:
+            # Fall back to default initialization
+            unit.initialize()
+
+
+def initialize_with_custom_guess(m, config_data):
+    """
+    Initialize with custom initial guesses based on typical values.
+    """
+    logger.info("Setting custom initial values...")
+    
+    # Typical pressure progression
+    stage_pressures = {
+        1: 15e5,   # 15 bar
+        2: 25e5,   # 25 bar  
+        3: 35e5    # 35 bar
+    }
+    
+    # Set pump pressures
+    for i in range(1, config_data['stage_count'] + 1):
+        pump = getattr(m.fs, f"pump{i}")
+        if i in stage_pressures:
+            pump.outlet.pressure.set_value(stage_pressures[i])
+    
+    # Set RO recoveries based on configuration (as initial guesses only)
+    for i in range(1, config_data['stage_count'] + 1):
+        ro = getattr(m.fs, f"ro_stage{i}")
+        stage_data = config_data['stages'][i-1]
+        target_recovery = stage_data.get('stage_recovery', 0.5)
+        
+        # Set recovery for each component (just as initial values, not fixed)
+        for comp in m.fs.properties.component_list:
+            if comp == "H2O":
+                ro.recovery_mass_phase_comp[0, 'Liq', comp].set_value(target_recovery)
+            else:
+                # Assume 98% rejection for ions
+                ro.recovery_mass_phase_comp[0, 'Liq', comp].set_value(0.02)
+    
+    # Set approximate flows
+    feed_flow = config_data['feed_flow_m3h'] / 3600  # m³/s
+    
+    for i in range(1, config_data['stage_count'] + 1):
+        ro = getattr(m.fs, f"ro_stage{i}")
+        
+        # Approximate permeate and concentrate flows
+        if i == 1:
+            inlet_flow = feed_flow
+        else:
+            # Previous stage concentrate
+            inlet_flow = feed_flow * (1 - 0.5 * (i-1))
+        
+        stage_recovery = config_data['stages'][i-1].get('stage_recovery', 0.5)
+        perm_flow = inlet_flow * stage_recovery
+        conc_flow = inlet_flow - perm_flow
+        
+        # Set approximate values (mass basis)
+        ro.permeate.flow_mass_phase_comp[0, 'Liq', 'H2O'].set_value(perm_flow * 1000)
+        ro.retentate.flow_mass_phase_comp[0, 'Liq', 'H2O'].set_value(conc_flow * 1000)
+
+
+def initialize_with_relaxation(m, config_data):
+    """
+    Initialize with constraint relaxation for difficult problems.
+    """
+    logger.info("Initializing with constraint relaxation...")
+    
+    # First, set custom guesses
+    initialize_with_custom_guess(m, config_data)
+    
+    # Initialize units
+    units = [m.fs.feed]
+    for i in range(1, config_data['stage_count'] + 1):
+        units.append(getattr(m.fs, f"pump{i}"))
+        units.append(getattr(m.fs, f"ro_stage{i}"))
+    
+    for unit in units:
+        unit.initialize()
+
+
+def initialize_model_advanced(m, config_data, strategy="sequential"):
+    """
+    Initialize model using selected strategy.
+    
+    Args:
+        m: Pyomo model
+        config_data: Configuration data
+        strategy: Initialization strategy
+            - "sequential": Default sequential initialization
+            - "block_triangular": Block triangularization
+            - "custom_guess": Custom initial values
+            - "relaxation": Constraint relaxation
+    """
+    logger.info(f"\nInitializing model using {strategy} strategy...")
+    
+    if strategy == "sequential":
+        initialize_model_sequential(m, config_data)
+    elif strategy == "block_triangular":
+        initialize_with_block_triangularization(m, config_data)
+    elif strategy == "custom_guess":
+        initialize_with_custom_guess(m, config_data)
+        initialize_model_sequential(m, config_data)
+    elif strategy == "relaxation":
+        initialize_with_relaxation(m, config_data)
+    else:
+        logger.info(f"Unknown strategy {strategy}, using sequential")
+        initialize_model_sequential(m, config_data)
+    
+    # Verify initialization
+    logger.info("\nChecking initialization...")
+    for i in range(1, config_data['stage_count'] + 1):
+        ro = getattr(m.fs, f"ro_stage{i}")
+        perm_flow = value(sum(
+            ro.permeate.flow_mass_phase_comp[0, 'Liq', comp]
+            for comp in m.fs.properties.component_list
+        )) / 1000 * 3600  # m³/h
+        
+        logger.info(f"  Stage {i} permeate flow: {perm_flow:.1f} m³/h")

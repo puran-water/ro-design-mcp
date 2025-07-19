@@ -7,10 +7,35 @@ An STDIO MCP server for reverse osmosis system design optimization.
 Provides tools for vessel array configuration and WaterTAP simulation.
 """
 
+import os
+import sys
+from pathlib import Path
+
+# Load environment variables before any other imports
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, continue without it
+    pass
+
+# Set required environment variables for IDAES
+if 'LOCALAPPDATA' not in os.environ:
+    if sys.platform == 'win32':
+        # On Windows, use the standard AppData\Local path
+        os.environ['LOCALAPPDATA'] = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    else:
+        # On other platforms, use a reasonable fallback
+        os.environ['LOCALAPPDATA'] = os.path.join(os.path.expanduser('~'), '.local')
+
+# Set Jupyter platform dirs to avoid deprecation warning
+if 'JUPYTER_PLATFORM_DIRS' not in os.environ:
+    os.environ['JUPYTER_PLATFORM_DIRS'] = '1'
+
+# Now do the rest of the imports
 import json
 import logging
 from typing import Dict, Any, Optional, List
-from pathlib import Path
 
 from fastmcp import FastMCP
 
@@ -25,13 +50,12 @@ from utils.response_formatter import (
     format_error_response
 )
 from utils.helpers import validate_salinity
+from utils.stdout_redirect import redirect_stdout_to_stderr
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Configure logging for MCP - CRITICAL for protocol integrity
+from utils.logging_config import configure_mcp_logging, get_configured_logger
+configure_mcp_logging()
+logger = get_configured_logger(__name__)
 
 # Create FastMCP instance
 mcp = FastMCP("RO Design Server")
@@ -271,16 +295,17 @@ async def simulate_ro_system(
                     configuration["feed_flow_m3h"] = 100.0
                     logger.warning("Could not find feed_flow_m3h, using default 100 m³/h")
         
-        # Run simulation
-        sim_results = run_ro_simulation(
-            configuration=configuration,
-            feed_salinity_ppm=feed_salinity_ppm,
-            feed_ion_composition=parsed_ion_composition,
-            feed_temperature_c=feed_temperature_c,
-            membrane_type=membrane_type,
-            membrane_properties=membrane_properties,
-            optimize_pumps=optimize_pumps
-        )
+        # Run simulation with stdout redirected to prevent MCP corruption
+        with redirect_stdout_to_stderr():
+            sim_results = run_ro_simulation(
+                configuration=configuration,
+                feed_salinity_ppm=feed_salinity_ppm,
+                feed_ion_composition=parsed_ion_composition,
+                feed_temperature_c=feed_temperature_c,
+                membrane_type=membrane_type,
+                membrane_properties=membrane_properties,
+                optimize_pumps=optimize_pumps
+            )
         
         # If simulation was successful, add economic analysis
         if sim_results.get("status") == "success":

@@ -3,24 +3,30 @@
 Write-Host "Installing RO Design MCP Server dependencies..." -ForegroundColor Green
 Write-Host ""
 
+# Check for environment variable or use default
+$venvPath = if ($env:VENV_PATH) { $env:VENV_PATH } else { "C:\Users\hvksh\mcp-servers\venv312" }
+
 # Activate the virtual environment
-& "C:\Users\hvksh\mcp-servers\venv312\Scripts\Activate.ps1"
+Write-Host "Activating virtual environment: $venvPath" -ForegroundColor Yellow
+& "$venvPath\Scripts\Activate.ps1"
 
 # Upgrade pip first
 Write-Host "Upgrading pip..." -ForegroundColor Yellow
 python -m pip install --upgrade pip
 
-# Install core dependencies
+# Install from requirements.txt
 Write-Host ""
-Write-Host "Installing core dependencies..." -ForegroundColor Yellow
-pip install fastmcp numpy papermill nbformat pydantic
+Write-Host "Installing dependencies from requirements.txt..." -ForegroundColor Yellow
+pip install -r requirements.txt
 
-# Install WaterTAP and related dependencies
+# Download IDAES extensions (required for solvers)
 Write-Host ""
-Write-Host "Installing WaterTAP dependencies (this may take a while)..." -ForegroundColor Yellow
-pip install watertap pyomo idaes-pse pandas matplotlib seaborn
+Write-Host "Downloading IDAES extensions (solvers)..." -ForegroundColor Yellow
+idaes get-extensions
 
 Write-Host ""
 Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "To run the server, use: python server.py" -ForegroundColor Cyan
+Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "1. Copy .env.example to .env and update with your paths"
+Write-Host "2. Run the server with: python server.py"
