@@ -292,26 +292,12 @@ async def simulate_ro_system(
         if not template_path.exists():
             raise FileNotFoundError(f"Notebook template not found: {template_path}")
         
-        # Fix configuration structure - add feed_flow_m3h at root level if missing
-        if "feed_flow_m3h" not in configuration:
-            # Check if it's in recycle_info
-            if "recycle_info" in configuration and "effective_feed_flow_m3h" in configuration["recycle_info"]:
-                configuration["feed_flow_m3h"] = configuration["recycle_info"]["effective_feed_flow_m3h"]
-                logger.info(f"Added feed_flow_m3h from recycle_info: {configuration['feed_flow_m3h']} m³/h")
-            else:
-                # Try to calculate from first stage if available
-                if "stages" in configuration and len(configuration["stages"]) > 0:
-                    first_stage = configuration["stages"][0]
-                    if "feed_flow_m3h" in first_stage:
-                        configuration["feed_flow_m3h"] = first_stage["feed_flow_m3h"]
-                        logger.info(f"Added feed_flow_m3h from first stage: {configuration['feed_flow_m3h']} m³/h")
-                    else:
-                        # Default to 100 m³/h as fallback
-                        configuration["feed_flow_m3h"] = 100.0
-                        logger.warning("Could not find feed_flow_m3h, using default 100 m³/h")
-                else:
-                    configuration["feed_flow_m3h"] = 100.0
-                    logger.warning("Could not find feed_flow_m3h, using default 100 m³/h")
+        # Configuration from optimize_ro_configuration should always have feed_flow_m3h
+        # Log it for debugging
+        if "feed_flow_m3h" in configuration:
+            logger.info(f"Using feed_flow_m3h from configuration: {configuration['feed_flow_m3h']} m³/h")
+        else:
+            logger.warning("feed_flow_m3h not found in configuration - this should not happen with current optimize_ro_configuration")
         
         # Prepare parameters for notebook
         parameters = {

@@ -12,7 +12,7 @@ import sys
 # Import everything we need - avoid importing from utils to prevent circular imports
 from pyomo.environ import ConcreteModel, Constraint, value, TransformationFactory, Reference, units as pyunits
 from pyomo.network import Arc
-from idaes.core import FlowsheetBlock
+from idaes.core import FlowsheetBlock, UnitModelCostingBlock
 from idaes.core.util.scaling import calculate_scaling_factors
 from idaes.models.unit_models import Feed, Product, Mixer, Separator
 from idaes.models.unit_models.mixer import MixingType, MomentumMixingType
@@ -23,6 +23,7 @@ from watertap.unit_models.reverse_osmosis_0D import (
     PressureChangeType
 )
 from watertap.unit_models.pressure_changer import Pump
+from watertap.costing import WaterTAPCosting
 from watertap.property_models.multicomp_aq_sol_prop_pack import MCASParameterBlock, MaterialFlowBasis
 from watertap.core.membrane_channel_base import TransportModel
 from watertap.core import ModuleType
@@ -373,6 +374,53 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     
     # Apply all scaling factors
     calculate_scaling_factors(m)
+    
+    # Add WaterTAP costing if enabled
+    if config_data.get('include_costing', True):
+        logger.info("Adding WaterTAP costing framework...")
+        
+        # Create WaterTAP costing block
+        m.fs.costing = WaterTAPCosting()
+        
+        # Add costing to each pump
+        for i in range(1, n_stages + 1):
+            pump = getattr(m.fs, f"pump{i}")
+            pump.costing = UnitModelCostingBlock(
+                flowsheet_costing_block=m.fs.costing
+            )
+            logger.info(f"Added costing block to pump{i}")
+        
+        # Add costing to each RO stage
+        for i in range(1, n_stages + 1):
+            ro = getattr(m.fs, f"ro_stage{i}")
+            ro.costing = UnitModelCostingBlock(
+                flowsheet_costing_block=m.fs.costing
+            )
+            logger.info(f"Added costing block to ro_stage{i}")
+        
+        # Process costs to aggregate from all units
+        m.fs.costing.cost_process()
+        
+        # For LCOW calculation, use the volumetric flow property from mixed_permeate
+        if n_stages == 1:
+            # Single stage - use permeate volumetric flow directly
+            product_flow = m.fs.ro_stage1.mixed_permeate[0].flow_vol_phase['Liq']
+        else:
+            # Multiple stages - sum volumetric flows from all permeate streams
+            from pyomo.environ import Expression
+            def total_permeate_vol_flow(fs):
+                return sum(
+                    getattr(fs, f"ro_stage{i}").mixed_permeate[0].flow_vol_phase['Liq']
+                    for i in range(1, n_stages + 1)
+                )
+            m.fs.total_permeate_flow_vol = Expression(rule=total_permeate_vol_flow)
+            product_flow = m.fs.total_permeate_flow_vol
+        
+        # Add LCOW and specific energy consumption metrics
+        m.fs.costing.add_LCOW(product_flow)
+        m.fs.costing.add_specific_energy_consumption(product_flow)
+        
+        logger.info("WaterTAP costing framework initialized successfully")
     
     return m
 

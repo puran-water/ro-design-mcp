@@ -94,25 +94,22 @@ def format_configuration_response(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Format a single configuration for response.
     
+    IMPORTANT: This function now returns the complete raw configuration
+    to ensure compatibility with simulate_ro_system.
+    
     Args:
         config: Raw configuration from optimizer
         
     Returns:
-        Formatted configuration for API response
+        Complete configuration with additional formatted fields
     """
-    formatted = {
-        "stage_count": config["n_stages"],
-        "array_notation": config["array_notation"],
-        "total_vessels": config["total_vessels"],
-        "total_membrane_area_m2": config["total_membrane_area_m2"],
-        "achieved_recovery": config["total_recovery"],
-        "recovery_error": config["recovery_error"],
-        "stages": []
-    }
+    # Start with the complete raw configuration to preserve all fields
+    # This ensures simulate_ro_system gets everything it needs
+    formatted = config.copy()
     
-    # Format each stage
-    for stage in config["stages"]:
-        formatted["stages"].append(format_stage_info(stage))
+    # Add formatted display fields (these are for user display)
+    formatted["stage_count"] = config["n_stages"]
+    formatted["achieved_recovery"] = config["total_recovery"]
     
     # Add recycle information
     formatted["recycle_info"] = format_recycle_info(config)

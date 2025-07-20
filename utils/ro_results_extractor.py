@@ -284,12 +284,85 @@ def extract_results_mcas(model, config_data):
         "mass_balance_ok": mass_balance_error < 0.001
     }
     
-    # Economics placeholder
-    results["economics"] = {
-        "capital_cost_usd": 0,  # Would need costing correlations
-        "operating_cost_usd_year": 0,
-        "lcow_usd_m3": 0
-    }
+    # Extract WaterTAP costing results if available
+    if hasattr(m.fs, "costing"):
+        logger.info("Extracting WaterTAP costing results...")
+        
+        # Total costs
+        total_capital_cost = value(m.fs.costing.total_capital_cost)
+        total_operating_cost = value(m.fs.costing.total_operating_cost)
+        
+        # LCOW if calculated
+        lcow = value(m.fs.costing.LCOW) if hasattr(m.fs.costing, "LCOW") else 0
+        
+        # Specific energy consumption
+        specific_energy = value(m.fs.costing.specific_energy_consumption) if hasattr(m.fs.costing, "specific_energy_consumption") else 0
+        
+        # Individual unit costs
+        pump_costs = {}
+        ro_costs = {}
+        for i in range(1, n_stages + 1):
+            pump = getattr(m.fs, f"pump{i}")
+            ro = getattr(m.fs, f"ro_stage{i}")
+            
+            if hasattr(pump, "costing") and hasattr(pump.costing, "capital_cost"):
+                pump_costs[f"pump{i}_capital_usd"] = value(pump.costing.capital_cost)
+            
+            if hasattr(ro, "costing") and hasattr(ro.costing, "capital_cost"):
+                ro_costs[f"ro_stage{i}_capital_usd"] = value(ro.costing.capital_cost)
+        
+        # Get detailed OPEX breakdown if available
+        electricity_cost = 0
+        maintenance_cost = 0
+        membrane_replacement_cost = 0
+        
+        if hasattr(m.fs.costing, "aggregate_flow_costs"):
+            try:
+                # aggregate_flow_costs is an indexed Pyomo variable (like a dict)
+                electricity_cost = value(m.fs.costing.aggregate_flow_costs["electricity"])
+                logger.info(f"Extracted electricity cost: ${electricity_cost:,.2f}/year")
+            except (KeyError, AttributeError) as e:
+                # If electricity is not in the flow costs
+                electricity_cost = 0
+                logger.warning(f"Electricity not found in aggregate_flow_costs: {str(e)}")
+        
+        if hasattr(m.fs.costing, "maintenance_labor_chemical_operating_cost"):
+            maintenance_cost = value(m.fs.costing.maintenance_labor_chemical_operating_cost)
+        
+        # Total fixed operating cost includes membrane replacement
+        if hasattr(m.fs.costing, "total_fixed_operating_cost"):
+            total_fixed_opex = value(m.fs.costing.total_fixed_operating_cost)
+            # Membrane replacement is part of fixed OPEX in WaterTAP
+            membrane_replacement_cost = total_fixed_opex - maintenance_cost if total_fixed_opex > maintenance_cost else 0
+        
+        results["economics"] = {
+            "capital_cost_usd": total_capital_cost,
+            "operating_cost_usd_year": total_operating_cost,
+            "lcow_usd_m3": lcow,
+            "electricity_cost_usd_year": electricity_cost,
+            "maintenance_cost_usd_year": maintenance_cost,
+            "membrane_replacement_cost_usd_year": membrane_replacement_cost,
+            "specific_energy_consumption_kwh_m3": specific_energy,
+            "individual_unit_costs": {
+                **pump_costs,
+                **ro_costs
+            }
+        }
+        
+        # Calculate plant capacity for context
+        annual_production_m3 = total_perm_flow * 3.6 * 24 * 365 * 0.9  # 90% availability
+        results["economics"]["annual_production_m3"] = annual_production_m3
+        
+        logger.info(f"Economics extracted - CAPEX: ${total_capital_cost:,.0f}, "
+                   f"OPEX: ${total_operating_cost:,.0f}/year, LCOW: ${lcow:.3f}/m³")
+    else:
+        # Fallback to placeholder if costing not available
+        logger.warning("WaterTAP costing not available, using placeholder values")
+        results["economics"] = {
+            "capital_cost_usd": 0,
+            "operating_cost_usd_year": 0,
+            "lcow_usd_m3": 0
+        }
     
     return results
 
