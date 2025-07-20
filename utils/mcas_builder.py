@@ -199,17 +199,9 @@ def adjust_for_electroneutrality(
     # Apply adjustment
     adjusted = ion_composition.copy()
     
-    # If cation excess and adjustment ion is anion, add it
-    # If anion excess and adjustment ion is cation, add it
-    if (charge_deficit > 0 and adj_charge < 0) or (charge_deficit < 0 and adj_charge > 0):
-        adjusted[adjustment_ion] = current_conc + required_mg_l
-        logger.info(f"Added {required_mg_l:.1f} mg/L of {adjustment_ion} for charge balance")
-    else:
-        # Wrong type of ion for adjustment
-        raise ValueError(
-            f"Cannot use {adjustment_ion} (charge {adj_charge}) to balance "
-            f"charge deficit of {charge_deficit:.3e}"
-        )
+    # Add the required amount of adjustment ion
+    adjusted[adjustment_ion] = current_conc + required_mg_l
+    logger.info(f"Added {required_mg_l:.1f} mg/L of {adjustment_ion} for charge balance")
     
     return adjusted
 
@@ -320,7 +312,6 @@ def build_mcas_property_configuration(
     
     # Determine appropriate adjustment ion based on charge imbalance
     is_neutral, imbalance = check_electroneutrality(feed_composition)
-    adjustment_ion = "Cl_-"  # Default
     
     if not is_neutral:
         # Calculate charge balance to determine which type of ion to use
@@ -337,12 +328,16 @@ def build_mcas_property_configuration(
                 else:
                     total_negative += charge_eq_l
         
-        # If anion excess, use Na+ for adjustment
-        if total_negative > total_positive:
+        # Choose adjustment ion based on imbalance
+        charge_deficit = total_positive - total_negative
+        if charge_deficit > 0:
+            # Cation excess - use Cl- for adjustment
+            adjustment_ion = "Cl_-"
+        else:
+            # Anion excess - use Na+ for adjustment
             adjustment_ion = "Na_+"
-    
-    # Adjust for electroneutrality
-    if not is_neutral:
+        
+        # Adjust for electroneutrality
         balanced_composition = adjust_for_electroneutrality(
             feed_composition, 
             adjustment_ion=adjustment_ion

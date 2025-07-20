@@ -24,6 +24,7 @@ from .ro_model_builder import build_ro_model_mcas
 from .ro_solver import initialize_and_solve_mcas
 from .ro_results_extractor import extract_results_mcas
 from .constants import TYPICAL_COMPOSITIONS
+from .trace_ion_handler import create_practical_simulation_composition, post_process_trace_rejection
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,8 @@ def run_ro_simulation(
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
     optimize_pumps: bool = True,
-    initialization_strategy: str = "sequential"
+    initialization_strategy: str = "sequential",
+    use_nacl_equivalent: bool = True  # New parameter for simplified approach
 ) -> Dict[str, Any]:
     """
     Run WaterTAP simulation for RO system configuration.
@@ -140,11 +142,37 @@ def run_ro_simulation(
                 "mass_balance": {}
             }
         
+        # Step 1.5: Convert to NaCl equivalent if requested (avoids FBBT errors)
+        original_composition = ion_composition.copy()
+        trace_ions = {}
+        strategy = "original"
+        
+        if use_nacl_equivalent and len(ion_composition) > 2:
+            logger.info("Converting multi-ion composition to NaCl equivalent for simulation...")
+            total_tds = sum(ion_composition.values())
+            simulation_composition = {
+                'Na_+': total_tds * 0.393,  # Mass fraction of Na in NaCl
+                'Cl_-': total_tds * 0.607   # Mass fraction of Cl in NaCl
+            }
+            trace_ions = ion_composition  # Store all original ions for post-processing
+            strategy = "nacl_equivalent"
+            logger.info(f"Using NaCl equivalent with TDS = {total_tds:.0f} mg/L")
+        else:
+            # Try trace ion handling for non-NaCl approach
+            logger.info("Checking for trace ions...")
+            simulation_composition, trace_ions, strategy = create_practical_simulation_composition(
+                ion_composition
+            )
+            
+            if trace_ions:
+                logger.info(f"Trace ion handling strategy: {strategy}")
+                logger.info(f"Trace ions identified: {list(trace_ions.keys())}")
+        
         # Step 2: Build MCAS property configuration
         logger.info("Building MCAS property configuration...")
         try:
             mcas_config = build_mcas_property_configuration(
-                feed_composition=ion_composition,
+                feed_composition=simulation_composition,  # Use modified composition
                 include_scaling_ions=True,
                 include_ph_species=True
             )
@@ -231,8 +259,35 @@ def run_ro_simulation(
                 "solver_message": solve_results.get("message", "")
             }
             
-            # Add model reference for advanced users
-            results["model"] = solve_results["model"]
+            # Don't include model in results - causes serialization issues
+            
+            # Post-process trace ion results if needed
+            if trace_ions:
+                logger.info("Post-processing trace ion rejection...")
+                
+                # Get rejection from main results
+                if results["stage_results"] and "ion_rejection" in results["stage_results"][0]:
+                    # Use actual rejection for the lumped component as basis
+                    lumped_rejection = results["stage_results"][0]["ion_rejection"].get("Na_+", 0.95)
+                else:
+                    lumped_rejection = 0.95
+                
+                # Estimate trace ion rejections
+                trace_rejections = post_process_trace_rejection(
+                    results, trace_ions, lumped_rejection
+                )
+                
+                # Add to results
+                results["trace_ion_info"] = {
+                    "handling_strategy": strategy,
+                    "trace_ions": trace_ions,
+                    "estimated_rejections": trace_rejections
+                }
+                
+                # Update stage results with trace ion rejections
+                for stage in results.get("stage_results", []):
+                    if "ion_rejection" in stage:
+                        stage["ion_rejection"].update(trace_rejections)
             
             # Log summary
             logger.info(f"Simulation completed successfully!")
@@ -251,8 +306,7 @@ def run_ro_simulation(
                 "performance": {},
                 "economics": {},
                 "stage_results": [],
-                "mass_balance": {},
-                "model": solve_results.get("model")
+                "mass_balance": {}
             }
         
     except Exception as e:
@@ -298,7 +352,11 @@ def calculate_lcow(
     total_annual_cost = annual_capital + annual_opex
     
     # LCOW
-    lcow = total_annual_cost / annual_production_m3
+    if annual_production_m3 > 0:
+        lcow = total_annual_cost / annual_production_m3
+    else:
+        logger.warning("Annual production is zero, cannot calculate LCOW")
+        lcow = float('inf')  # Return infinity for zero production
     
     return lcow
 

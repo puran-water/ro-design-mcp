@@ -241,6 +241,11 @@ async def simulate_ro_system(
         ```
     """
     try:
+        # Globally disable solver output capture to prevent stdout issues
+        import idaes.logger as idaeslog
+        idaeslog.solver_capture_off()
+        logger.info("Disabled IDAES solver capture globally")
+        
         # Import simulation module
         from utils.simulate_ro import run_ro_simulation, calculate_lcow, estimate_capital_cost
         
@@ -304,7 +309,8 @@ async def simulate_ro_system(
                 feed_temperature_c=feed_temperature_c,
                 membrane_type=membrane_type,
                 membrane_properties=membrane_properties,
-                optimize_pumps=optimize_pumps
+                optimize_pumps=optimize_pumps,
+                use_nacl_equivalent=True  # Speed up initialization by using NaCl equivalent
             )
         
         # If simulation was successful, add economic analysis
@@ -312,7 +318,7 @@ async def simulate_ro_system(
             # Get key metrics
             total_power_kw = sim_results["economics"].get("total_power_kw", 0)
             specific_energy = sim_results["economics"].get("specific_energy_kwh_m3", 0)
-            total_recovery = sim_results["performance"].get("total_recovery", 0)
+            total_recovery = sim_results["performance"].get("system_recovery", 0)
             
             # Estimate costs
             total_membrane_area = configuration.get("total_membrane_area_m2", 0)
@@ -328,6 +334,12 @@ async def simulate_ro_system(
             
             feed_flow_m3h = configuration.get("feed_flow_m3h", 100)
             plant_availability = get_config('operating.plant_availability', 0.9)
+            
+            # Defensive check for zero recovery
+            if total_recovery <= 0:
+                logger.warning(f"Total recovery is zero or negative: {total_recovery}")
+                total_recovery = 0.001  # Use minimal value to avoid division by zero
+                
             annual_production = feed_flow_m3h * total_recovery * 8760 * plant_availability
             
             electricity_cost_kwh = get_config('energy.electricity_cost_usd_kwh', 0.07)

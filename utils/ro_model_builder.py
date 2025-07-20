@@ -270,16 +270,51 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     ion_composition_mg_l = mcas_config['ion_composition_mg_l']
     total_ion_flow_kg_s = 0
     
-    # Set ion flows
+    # Set ion flows with minimum values to avoid numerical issues
     for comp in mcas_config['solute_list']:
         conc_mg_l = ion_composition_mg_l[comp]
         ion_flow_kg_s = conc_mg_l * fresh_feed_flow_m3_s / 1000  # mg/L * m³/s / 1000 = kg/s
+        
+        # Ensure minimum flow to avoid numerical issues with trace components
+        # This is 1 ppb minimum, which is below detection limits but prevents zero
+        min_flow_kg_s = 1e-9 * fresh_feed_flow_m3_s  # 1 ppb * m³/s
+        ion_flow_kg_s = max(ion_flow_kg_s, min_flow_kg_s)
+        
         feed_state.flow_mass_phase_comp[0, 'Liq', comp].fix(ion_flow_kg_s)
         total_ion_flow_kg_s += ion_flow_kg_s
     
     # Water flow
     water_flow_kg_s = fresh_feed_flow_m3_s * 1000 - total_ion_flow_kg_s  # ~1000 kg/m³
     feed_state.flow_mass_phase_comp[0, 'Liq', 'H2O'].fix(water_flow_kg_s)
+    
+    # Fix temperature and pressure on fresh_feed
+    m.fs.fresh_feed.properties[0].temperature.fix((273.15 + feed_temperature_c) * pyunits.K)
+    m.fs.fresh_feed.properties[0].pressure.fix(1 * pyunits.atm)
+    
+    # Assert electroneutrality for multi-ion systems
+    if len(ion_composition_mg_l) > 2:  # More than just Na+/Cl-
+        # Use Cl- as adjustment ion if present, otherwise use the most abundant anion
+        adjustment_ion = None
+        if 'Cl_-' in ion_composition_mg_l:
+            adjustment_ion = 'Cl_-'
+        else:
+            # Find the most abundant anion
+            anions = [(comp, conc) for comp, conc in ion_composition_mg_l.items() 
+                     if comp in mcas_config['charge'] and mcas_config['charge'][comp] < 0]
+            if anions:
+                adjustment_ion = max(anions, key=lambda x: x[1])[0]
+        
+        if adjustment_ion:
+            try:
+                # Assert electroneutrality on the fresh_feed state block
+                m.fs.fresh_feed.properties[0].assert_electroneutrality(
+                    defined_state=True,
+                    adjust_by_ion=adjustment_ion,
+                    tol=1e-8
+                )
+                logger.info(f"Asserted electroneutrality by adjusting {adjustment_ion}")
+            except Exception as e:
+                logger.warning(f"Could not assert electroneutrality: {str(e)}")
     
     # Set recycle split ratio - use epsilon for "no recycle" to avoid numerical issues
     recycle_info = config_data.get('recycle_info', {})
@@ -296,10 +331,47 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     for i in range(1, n_stages + 1):
         getattr(m.fs, f"pump{i}").efficiency_pump.fix(0.8)
     
-    # Set scaling factors
+    # Set scaling factors with sophisticated handling for trace ions
+    # Water gets scaling factor of 1 (it's ~1 kg/s scale)
     m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1, index=("Liq", "H2O"))
+    
+    # Calculate expected flow rates for scaling
+    water_flow_kg_s = fresh_feed_flow_m3_s * 1000  # ~1000 kg/m³
+    
     for comp in mcas_config['solute_list']:
-        m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e4, index=("Liq", comp))
+        conc_mg_l = ion_composition_mg_l.get(comp, 0)
+        
+        if conc_mg_l > 0:
+            # Calculate expected flow rate in kg/s
+            expected_flow_kg_s = conc_mg_l * fresh_feed_flow_m3_s / 1000  # mg/L * m³/s / 1000 = kg/s
+            
+            # Scaling factor should be inverse of expected magnitude
+            # Goal: bring scaled value to range 0.01-100
+            if expected_flow_kg_s > 0:
+                # Choose scaling to bring value to ~1
+                scale_factor = 1.0 / expected_flow_kg_s
+                
+                # Limit scaling factors to reasonable range
+                scale_factor = max(1e-2, min(1e8, scale_factor))
+                
+                m.fs.properties.set_default_scaling("flow_mass_phase_comp", scale_factor, index=("Liq", comp))
+                logger.info(f"Set scaling factor {scale_factor:.2e} for {comp} "
+                          f"(conc: {conc_mg_l} mg/L, expected flow: {expected_flow_kg_s:.2e} kg/s)")
+            else:
+                # Default for very small concentrations
+                m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e6, index=("Liq", comp))
+        else:
+            # Default for zero concentration
+            m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e4, index=("Liq", comp))
+    
+    # Also set scaling for other important variables
+    # Pressure scaling (expecting ~50 bar = 5e6 Pa)
+    m.fs.properties.set_default_scaling("pressure", 1e-6)
+    
+    # Temperature scaling (expecting ~300 K)
+    m.fs.properties.set_default_scaling("temperature", 1e-2)
+    
+    # Apply all scaling factors
     calculate_scaling_factors(m)
     
     return m

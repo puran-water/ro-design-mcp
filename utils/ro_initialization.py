@@ -9,7 +9,9 @@ pressure variables are properly set before initialization.
 from typing import Dict, Any, Optional
 from pyomo.environ import value, units as pyunits
 from idaes.core.util.initialization import propagate_state
+import idaes.logger as idaeslog
 import logging
+from .stdout_redirect import redirect_stdout_to_stderr
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +222,9 @@ def initialize_pump_with_pressure(
         required_pressure: Required outlet pressure in Pa
         efficiency: Pump efficiency (default 0.8)
     """
+    import time
+    pump_start = time.time()
+    
     # Fix pressure for stable initialization - convert Pa to proper units
     pump.outlet.pressure[0].fix(required_pressure * pyunits.Pa)
     logger.info(f"Pump pressure fixed at: {required_pressure/1e5:.1f} bar for initialization")
@@ -250,7 +255,13 @@ def initialize_pump_with_pressure(
             'pressure': required_pressure  # Use required pressure to avoid bound conflicts
         }
     
-    pump.initialize(state_args=inlet_state)
+    # Initialize pump with output suppressed to prevent MCP protocol corruption
+    logger.info(f"[PUMP TIMING] About to call pump.initialize() at {time.time()-pump_start:.1f}s")
+    pump.initialize(
+        state_args=inlet_state,
+        outlvl=idaeslog.NOTSET  # Suppress solver output
+    )
+    logger.info(f"[PUMP TIMING] pump.initialize() completed at {time.time()-pump_start:.1f}s")
     
     logger.info(f"Pump initialized successfully")
 
@@ -271,6 +282,9 @@ def initialize_ro_unit_elegant(
         target_recovery: Optional target recovery for initial guess
         verbose: Print detailed initialization info
     """
+    import time as timing
+    ro_start = timing.time()
+    
     # Get inlet conditions (must be already propagated)
     time = 0  # Steady state
     inlet = ro_unit.inlet
@@ -388,18 +402,24 @@ def initialize_ro_unit_elegant(
             'cp_modulus': 1.1  # 10% concentration polarization
         }
         
-        # Initialize RO with guesses
+        # Initialize RO with guesses and output suppressed
+        logger.info(f"[RO TIMING] About to call ro_unit.initialize() at {timing.time()-ro_start:.1f}s")
         ro_unit.initialize(
             state_args=state_args,
             initialize_guess=initialize_guess,
-            optarg=init_options
+            optarg=init_options,
+            outlvl=idaeslog.NOTSET  # Suppress solver output
         )
+        logger.info(f"[RO TIMING] ro_unit.initialize() completed at {timing.time()-ro_start:.1f}s")
     else:
-        # Standard initialization for non-MCAS
+        # Standard initialization for non-MCAS with output suppressed
+        logger.info(f"[RO TIMING] About to call ro_unit.initialize() (standard) at {timing.time()-ro_start:.1f}s")
         ro_unit.initialize(
             state_args=state_args,
-            optarg=init_options
+            optarg=init_options,
+            outlvl=idaeslog.NOTSET  # Suppress solver output
         )
+        logger.info(f"[RO TIMING] ro_unit.initialize() completed at {timing.time()-ro_start:.1f}s")
     
     if verbose:
         # Report actual recovery achieved
