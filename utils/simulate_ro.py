@@ -124,6 +124,9 @@ def run_ro_simulation(
     try:
         logger.info(f"Starting RO simulation for {configuration['array_notation']} array")
         
+        # Log progress for debugging/monitoring
+        logger.info("[PROGRESS 5%] Preparing ion composition...")
+        
         # Step 1: Prepare and validate ion composition
         logger.info("Preparing ion composition...")
         try:
@@ -169,7 +172,7 @@ def run_ro_simulation(
                 logger.info(f"Trace ions identified: {list(trace_ions.keys())}")
         
         # Step 2: Build MCAS property configuration
-        logger.info("Building MCAS property configuration...")
+        logger.info("[PROGRESS 10%] Building MCAS property configuration...")
         try:
             mcas_config = build_mcas_property_configuration(
                 feed_composition=simulation_composition,  # Use modified composition
@@ -188,7 +191,7 @@ def run_ro_simulation(
             }
         
         # Step 3: Build the model
-        logger.info("Building RO model...")
+        logger.info("[PROGRESS 15%] Building WaterTAP RO model...")
         try:
             # Redirect stdout during model building to prevent MCP protocol corruption
             with redirect_stdout_to_stderr():
@@ -212,7 +215,7 @@ def run_ro_simulation(
             }
         
         # Step 4: Initialize and solve
-        logger.info(f"Initializing and solving model (optimize_pumps={optimize_pumps})...")
+        logger.info(f"[PROGRESS 25%] Initializing RO model (optimize_pumps={optimize_pumps})...")
         try:
             # Redirect stdout during solving to prevent MCP protocol corruption
             with redirect_stdout_to_stderr():
@@ -237,6 +240,8 @@ def run_ro_simulation(
             logger.info("Model solved successfully!")
             
         except Exception as e:
+            import traceback
+            logger.error(f"Detailed error during initialization/solving: {traceback.format_exc()}")
             return {
                 "status": "error",
                 "message": f"Failed during initialization/solving: {str(e)}",

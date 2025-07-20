@@ -150,7 +150,13 @@ def calculate_membrane_permeability_from_spec(
     m.fs.RO.A_comp.unfix()
     m.fs.RO.mixed_permeate[0.0].flow_mass_phase_comp['Liq', 'H2O'].fix(permeate_flow_kg_s)
     
-    results = solver.solve(m, tee=False)
+    results = solver.solve(m, tee=False, options={
+        'linear_solver': 'ma27',
+        'max_cpu_time': 300,  # 5 minutes
+        'tol': 1e-6,
+        'constr_viol_tol': 1e-6,
+        'print_level': 0,
+    })
     assert_optimal_termination(results)
     
     A_value = value(m.fs.RO.A_comp[0, 'H2O'])
@@ -161,7 +167,13 @@ def calculate_membrane_permeability_from_spec(
     m.fs.RO.B_comp.unfix()
     m.fs.RO.rejection_phase_comp[0, "Liq", "NaCl"].fix(salt_rejection)
     
-    results = solver.solve(m, tee=False)
+    results = solver.solve(m, tee=False, options={
+        'linear_solver': 'ma27',
+        'max_cpu_time': 300,  # 5 minutes
+        'tol': 1e-6,
+        'constr_viol_tol': 1e-6,
+        'print_level': 0,
+    })
     assert_optimal_termination(results)
     
     B_value = value(m.fs.RO.B_comp[0, 'NaCl'])

@@ -1,0 +1,113 @@
+{
+  "status": "success",
+  "message": "RO system simulation completed successfully",
+  "results": {
+    "performance": {
+      "system_recovery": 0.7500075599029904,
+      "total_permeate_flow_m3_h": 114.28194799119912,
+      "total_permeate_tds_mg_l": 54.06379574149761,
+      "total_power_consumption_kW": 52.793596448790666,
+      "specific_energy_kWh_m3": 0.4619591928276924
+    },
+    "economics": {
+      "capital_cost_usd": 0,
+      "operating_cost_usd_year": 0,
+      "lcow_usd_m3": 0
+    },
+    "stage_results": [
+      {
+        "stage": 1,
+        "recovery": 0.5518480073601302,
+        "feed_flow_kg_s": 43.17311786610233,
+        "permeate_flow_kg_s": 23.775866115966824,
+        "concentrate_flow_kg_s": 19.397251750135506,
+        "feed_pressure_bar": 9.93261291740647,
+        "concentrate_pressure_bar": 9.43261291740647,
+        "permeate_pressure_bar": 1.01325,
+        "pump_power_kW": 48.13458831546649,
+        "ion_data": {
+          "Na_+": {
+            "feed_mg_l": 826.1697306909808,
+            "permeate_mg_l": 16.002942138184714,
+            "concentrate_mg_l": 1819.2185060722413,
+            "rejection": 0.9806299582958572,
+            "feed_flow_kg_s": 0.03566832316052773,
+            "permeate_flow_kg_s": 0.00038048380973904365,
+            "concentrate_flow_kg_s": 0.035287839350788684
+          },
+          "Cl_-": {
+            "feed_mg_l": 1276.083761764757,
+            "permeate_mg_l": 24.089709951985345,
+            "concentrate_mg_l": 2810.6951251337623,
+            "rejection": 0.9811221561830153,
+            "feed_flow_kg_s": 0.0550925146536891,
+            "permeate_flow_kg_s": 0.0005727537185908772,
+            "concentrate_flow_kg_s": 0.054519760935098215
+          }
+        }
+      },
+      {
+        "stage": 2,
+        "recovery": 0.41279791425601225,
+        "feed_flow_kg_s": 19.397251750135506,
+        "permeate_flow_kg_s": 7.970835691558799,
+        "concentrate_flow_kg_s": 11.426416058576708,
+        "feed_pressure_bar": 11.354125590784701,
+        "concentrate_pressure_bar": 10.8541255907847,
+        "permeate_pressure_bar": 1.01325,
+        "pump_power_kW": 4.659008133324181,
+        "ion_data": {
+          "Na_+": {
+            "feed_mg_l": 1819.2185060722413,
+            "permeate_mg_l": 38.0895245741313,
+            "concentrate_mg_l": 3061.697896304013,
+            "rejection": 0.9790626994794771,
+            "feed_flow_kg_s": 0.035287839350788684,
+            "permeate_flow_kg_s": 0.0003036053419499918,
+            "concentrate_flow_kg_s": 0.0349842340088387
+          },
+          "Cl_-": {
+            "feed_mg_l": 2810.6951251337623,
+            "permeate_mg_l": 57.63655935936397,
+            "concentrate_mg_l": 4731.1728466284985,
+            "rejection": 0.9794938416322827,
+            "feed_flow_kg_s": 0.054519760935098215,
+            "permeate_flow_kg_s": 0.0004594115444802657,
+            "concentrate_flow_kg_s": 0.05406034939061795
+          }
+        }
+      }
+    ],
+    "mass_balance": {
+      "mass_balance_error": 4.188429994065638e-17,
+      "mass_balance_ok": true
+    },
+    "ion_analysis": {
+      "Na_+": {
+        "fresh_feed_mg_l": 786.0000000000001,
+        "combined_permeate_mg_l": 21.54835345846448,
+        "disposal_mg_l": 3061.697896304013,
+        "overall_rejection": 0.972584792037577
+      },
+      "Cl_-": {
+        "fresh_feed_mg_l": 1214.0,
+        "combined_permeate_mg_l": 32.51251954703735,
+        "disposal_mg_l": 4731.1728466284985,
+        "overall_rejection": 0.9732186824159494
+      }
+    }
+  },
+  "summary": {
+    "system_recovery": 0.7500075599029904,
+    "permeate_tds_mg_l": 54.06379574149761,
+    "specific_energy_kwh_m3": 0.4619591928276924,
+    "total_power_kw": 0
+  },
+  "property_package": "MCAS",
+  "initialization_strategy": "sequential",
+  "solver_info": {
+    "termination_condition": "optimal",
+    "solve_time": 0,
+    "iterations": 0
+  }
+}

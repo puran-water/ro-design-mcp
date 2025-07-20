@@ -36,8 +36,10 @@ if 'JUPYTER_PLATFORM_DIRS' not in os.environ:
 import json
 import logging
 from typing import Dict, Any, Optional, List
+import time
+from datetime import datetime
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 # Import our utilities
 from utils.optimize_ro import optimize_vessel_array_configuration
@@ -47,7 +49,8 @@ from utils.validation import (
 )
 from utils.response_formatter import (
     format_optimization_response,
-    format_error_response
+    format_error_response,
+    format_simulation_response
 )
 from utils.helpers import validate_salinity
 from utils.stdout_redirect import redirect_stdout_to_stderr
@@ -198,14 +201,15 @@ async def simulate_ro_system(
     feed_temperature_c: float = 25.0,
     membrane_type: str = "brackish",
     membrane_properties: Optional[Dict[str, float]] = None,
-    optimize_pumps: bool = True
+    optimize_pumps: bool = True,
+    ctx: Context = None
 ) -> Dict[str, Any]:
     """
     Run WaterTAP simulation for the specified RO configuration using MCAS property package.
     
-    This tool creates a WaterTAP model with detailed ion modeling, runs the simulation,
-    and returns performance metrics including LCOW, energy consumption, detailed
-    stage results, ion speciation, and scaling prediction.
+    This tool executes a parameterized Jupyter notebook that creates a WaterTAP model
+    with detailed ion modeling, runs the simulation, and returns complete results.
+    The notebook runs in a subprocess to avoid blocking issues.
     
     Args:
         configuration: Output from optimize_ro_configuration tool
@@ -219,37 +223,34 @@ async def simulate_ro_system(
     
     Returns:
         Dictionary containing:
-        - performance: Overall system performance metrics
-        - economics: LCOW and energy consumption
-        - stage_results: Detailed results for each stage
-        - mass_balance: System mass balance verification
-        - ion_analysis: Ion rejection and speciation (if ion composition provided)
+        - status: "success" indicating simulation completed successfully  
+        - results: Complete simulation results including performance, economics, etc.
+        - message: Status message with execution time
+        - notebook_path: Path to the output notebook for reference
     
     Note:
-        This tool requires WaterTAP to be installed and will execute
-        a parameterized Jupyter notebook for the simulation.
+        This tool waits for simulation completion and returns full results in one call.
+        Typical execution time is 20-30 seconds for standard configurations.
     
     Example:
         ```python
-        # MCAS simulation with ion composition (required)
+        # Run complete MCAS simulation
         result = await simulate_ro_system(
             configuration=config_from_optimization,
             feed_salinity_ppm=5000,
             feed_temperature_c=25.0,
             feed_ion_composition='{"Na+": 1200, "Ca2+": 120, "Mg2+": 60, "Cl-": 2100, "SO4-2": 200, "HCO3-": 150}'
         )
+        # Returns complete results immediately
+        print(result['results']['performance']['system_recovery'])
         ```
     """
     try:
-        # Globally disable solver output capture to prevent stdout issues
-        import idaes.logger as idaeslog
-        idaeslog.solver_capture_off()
-        logger.info("Disabled IDAES solver capture globally")
+        import papermill as pm
+        from pathlib import Path
+        from datetime import datetime
         
-        # Import simulation module
-        from utils.simulate_ro import run_ro_simulation, calculate_lcow, estimate_capital_cost
-        
-        # Validate inputs
+        # Validate inputs first
         if not isinstance(configuration, dict):
             raise ValueError("configuration must be a dictionary from optimize_ro_configuration")
         
@@ -276,8 +277,20 @@ async def simulate_ro_system(
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
         
-        # Log the request
-        logger.info(f"Running WaterTAP MCAS simulation for {configuration.get('array_notation', 'unknown')} array")
+        # Create output directory if it doesn't exist
+        output_dir = Path(__file__).parent / "results"
+        output_dir.mkdir(exist_ok=True)
+        
+        # Generate unique output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"ro_simulation_mcas_{timestamp}.ipynb"
+        output_path = output_dir / output_filename
+        
+        # Select appropriate notebook template
+        template_path = Path(__file__).parent / "notebooks" / "ro_simulation_mcas_template.ipynb"
+        
+        if not template_path.exists():
+            raise FileNotFoundError(f"Notebook template not found: {template_path}")
         
         # Fix configuration structure - add feed_flow_m3h at root level if missing
         if "feed_flow_m3h" not in configuration:
@@ -300,96 +313,134 @@ async def simulate_ro_system(
                     configuration["feed_flow_m3h"] = 100.0
                     logger.warning("Could not find feed_flow_m3h, using default 100 m³/h")
         
-        # Run simulation with stdout redirected to prevent MCP corruption
-        with redirect_stdout_to_stderr():
-            sim_results = run_ro_simulation(
-                configuration=configuration,
-                feed_salinity_ppm=feed_salinity_ppm,
-                feed_ion_composition=parsed_ion_composition,
-                feed_temperature_c=feed_temperature_c,
-                membrane_type=membrane_type,
-                membrane_properties=membrane_properties,
-                optimize_pumps=optimize_pumps,
-                use_nacl_equivalent=True  # Speed up initialization by using NaCl equivalent
-            )
+        # Prepare parameters for notebook
+        parameters = {
+            "project_root": str(Path(__file__).parent),
+            "configuration": configuration,
+            "feed_salinity_ppm": feed_salinity_ppm,
+            "feed_ion_composition": feed_ion_composition,  # Pass as string, notebook will parse
+            "feed_temperature_c": feed_temperature_c,
+            "membrane_type": membrane_type,
+            "membrane_properties": membrane_properties,
+            "optimize_pumps": optimize_pumps,
+            "initialization_strategy": "sequential"
+        }
         
-        # If simulation was successful, add economic analysis
-        if sim_results.get("status") == "success":
-            # Get key metrics
-            total_power_kw = sim_results["economics"].get("total_power_kw", 0)
-            specific_energy = sim_results["economics"].get("specific_energy_kwh_m3", 0)
-            total_recovery = sim_results["performance"].get("system_recovery", 0)
+        # Log the request
+        logger.info(f"Starting notebook execution for {configuration.get('array_notation', 'unknown')} array")
+        logger.info(f"Output notebook: {output_path}")
+        
+        # Execute notebook - this waits for completion (subprocess isolation prevents blocking)
+        start_time = time.time()
+        
+        pm.execute_notebook(
+            str(template_path),
+            str(output_path),
+            parameters=parameters,
+            kernel_name="python3",
+            start_timeout=60,  # Allow 60 seconds for kernel startup
+            execution_timeout=1800  # Allow 30 minutes for execution
+        )
+        
+        execution_time = time.time() - start_time
+        logger.info(f"Notebook execution completed in {execution_time:.1f} seconds")
+        
+        # Immediately extract results from the completed notebook
+        try:
+            # Import result extraction functions
+            import nbformat
             
-            # Estimate costs
-            total_membrane_area = configuration.get("total_membrane_area_m2", 0)
+            # Read the completed notebook
+            with open(output_path, 'r', encoding='utf-8') as f:
+                nb = nbformat.read(f, as_version=4)
             
-            # Capital cost estimation (uses config values)
-            capital_cost = estimate_capital_cost(
-                total_membrane_area_m2=total_membrane_area,
-                total_power_kw=total_power_kw * 1.2  # 20% margin
-            )
+            # Look for the results cell (tagged with "results")
+            results_data = None
+            for cell in nb.cells:
+                if (cell.cell_type == 'code' and 
+                    'tags' in cell.metadata and 
+                    'results' in cell.metadata.tags and
+                    cell.outputs):
+                    
+                    # Extract results from the output
+                    for output in cell.outputs:
+                        if output.get('output_type') == 'execute_result':
+                            if 'data' in output and 'text/plain' in output['data']:
+                                results_str = output['data']['text/plain']
+                                # Parse the results safely
+                                import ast
+                                try:
+                                    results_data = ast.literal_eval(results_str)
+                                    break
+                                except:
+                                    try:
+                                        results_data = json.loads(results_str)
+                                        break
+                                    except:
+                                        logger.warning("Could not parse results from notebook")
+                    
+                    if results_data:
+                        break
             
-            # Operating cost estimation (simplified)
-            from utils.config import get_config
-            
-            feed_flow_m3h = configuration.get("feed_flow_m3h", 100)
-            plant_availability = get_config('operating.plant_availability', 0.9)
-            
-            # Defensive check for zero recovery
-            if total_recovery <= 0:
-                logger.warning(f"Total recovery is zero or negative: {total_recovery}")
-                total_recovery = 0.001  # Use minimal value to avoid division by zero
+            if results_data:
+                # Add execution metadata
+                results_data["execution_info"] = {
+                    "execution_time_seconds": execution_time,
+                    "notebook_path": str(output_path),
+                    "timestamp": datetime.now().isoformat()
+                }
                 
-            annual_production = feed_flow_m3h * total_recovery * 8760 * plant_availability
-            
-            electricity_cost_kwh = get_config('energy.electricity_cost_usd_kwh', 0.07)
-            annual_energy_cost = annual_production * specific_energy * electricity_cost_kwh
-            
-            # Membrane replacement
-            membrane_lifetime = get_config('operating.membrane_lifetime_years', 7)
-            membrane_cost_m2 = get_config('capital.membrane_cost_usd_m2', 30.0)
-            annual_membrane_cost = (total_membrane_area * membrane_cost_m2) / membrane_lifetime
-            
-            # Other O&M
-            maintenance_fraction = get_config('operating.maintenance_fraction', 0.02)
-            other_om_cost = capital_cost * maintenance_fraction
-            
-            total_annual_opex = annual_energy_cost + annual_membrane_cost + other_om_cost
-            
-            # Calculate LCOW
-            discount_rate = get_config('financial.discount_rate', 0.08)
-            plant_lifetime = get_config('financial.plant_lifetime_years', 20)
-            
-            lcow = calculate_lcow(
-                capital_cost=capital_cost,
-                annual_opex=total_annual_opex,
-                annual_production_m3=annual_production,
-                discount_rate=discount_rate,
-                plant_lifetime_years=plant_lifetime
-            )
-            
-            # Add to results
-            sim_results["economics"]["capital_cost_usd"] = capital_cost
-            sim_results["economics"]["annual_opex_usd"] = total_annual_opex
-            sim_results["economics"]["lcow_usd_m3"] = lcow
-            sim_results["economics"]["annual_production_m3"] = annual_production
-        
-        return sim_results
+                return {
+                    "status": "success",
+                    "message": f"Simulation completed successfully in {execution_time:.1f} seconds",
+                    "results": results_data,
+                    "notebook_path": str(output_path)
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Simulation completed but no results found in notebook",
+                    "notebook_path": str(output_path),
+                    "execution_time_seconds": execution_time
+                }
+                
+        except Exception as e:
+            logger.error(f"Error extracting results: {str(e)}")
+            return {
+                "status": "partial_success",
+                "message": f"Simulation completed in {execution_time:.1f}s but failed to extract results: {str(e)}",
+                "notebook_path": str(output_path),
+                "execution_time_seconds": execution_time,
+                "instructions": "Use get_simulation_results tool to manually extract results"
+            }
         
     except ImportError as e:
-        logger.error(f"WaterTAP dependencies not available: {str(e)}")
-        return {
-            "status": "error",
-            "error": "WaterTAP dependencies not installed",
-            "message": "Please install WaterTAP and its dependencies to use this tool"
-        }
+        if "papermill" in str(e):
+            logger.error("Papermill not available")
+            return {
+                "status": "error",
+                "error": "Papermill not installed",
+                "message": "Please install papermill to use notebook-based simulation"
+            }
+        else:
+            logger.error(f"Import error: {str(e)}")
+            return {
+                "status": "error",
+                "error": "Dependencies not installed",
+                "message": f"Missing dependency: {str(e)}"
+            }
     except Exception as e:
         logger.error(f"Error in simulate_ro_system: {str(e)}")
         return {
             "status": "error",
-            "error": str(e),
-            "message": "Failed to run RO system simulation"
+            "error": str(type(e).__name__),
+            "message": str(e)
         }
+
+
+# Removed check_simulation_status and get_simulation_results tools
+# With the improved single-tool architecture, simulate_ro_system returns complete results
+# These tools are no longer needed and add unnecessary complexity
 
 
 # Main entry point
@@ -400,7 +451,7 @@ def main():
     # Log available tools
     logger.info("Available tools:")
     logger.info("  - optimize_ro_configuration: Generate optimal RO vessel array configurations")
-    logger.info("  - simulate_ro_system: Run WaterTAP simulation for detailed performance analysis")
+    logger.info("  - simulate_ro_system: Run WaterTAP simulation and return complete results")
     
     # Run the server
     mcp.run()

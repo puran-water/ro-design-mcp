@@ -13,6 +13,7 @@ import time
 from pyomo.environ import (
     Constraint, TerminationCondition, value, Block, Var, units as pyunits
 )
+from pyomo.opt import SolverStatus
 
 # Suppress specific warnings that corrupt MCP protocol
 warnings.filterwarnings("ignore", message=".*export suffix 'scaling_factor'.*", module="pyomo.repn.plugins.nl_writer")
@@ -40,6 +41,57 @@ from .ro_initialization import (
 from .logging_config import get_configured_logger
 from .stdout_redirect import redirect_stdout_to_stderr
 logger = get_configured_logger(__name__)
+
+
+def check_solver_status(results, context="solve", raise_on_fail=True):
+    """
+    Check solver status and handle various termination conditions.
+    
+    Args:
+        results: Solver results object
+        context: Description of what was being solved
+        raise_on_fail: Whether to raise exception on failure
+        
+    Returns:
+        bool: True if solution is acceptable, False otherwise
+    """
+    if results.solver.termination_condition == TerminationCondition.optimal:
+        logger.info(f"{context}: Found optimal solution")
+        return True
+    
+    # Check for specific conditions
+    if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
+        logger.warning(f"{context}: Solver hit time limit. Consider relaxing tolerances or increasing time limit.")
+        if hasattr(results.solver, 'time'):
+            logger.warning(f"  CPU time used: {results.solver.time:.1f}s")
+    elif results.solver.termination_condition == TerminationCondition.locallyOptimal:
+        logger.info(f"{context}: Found locally optimal solution (acceptable for non-convex problems)")
+        return True
+    elif results.solver.termination_condition == TerminationCondition.feasible:
+        logger.warning(f"{context}: Found feasible but not optimal solution")
+        # For some cases, feasible is acceptable
+        if "verification" in context:
+            return True
+    elif results.solver.termination_condition == TerminationCondition.infeasible:
+        logger.error(f"{context}: Problem is infeasible - check constraints and bounds")
+    else:
+        logger.error(f"{context}: Solver failed with termination condition: {results.solver.termination_condition}")
+    
+    # Check solver status too
+    if hasattr(results, 'solver'):
+        if results.solver.status == SolverStatus.warning:
+            logger.warning(f"{context}: Solver returned with warning status")
+        elif results.solver.status == SolverStatus.error:
+            logger.error(f"{context}: Solver returned with error status")
+    
+    if raise_on_fail and results.solver.termination_condition not in [
+        TerminationCondition.optimal, 
+        TerminationCondition.locallyOptimal,
+        TerminationCondition.feasible  # Sometimes acceptable
+    ]:
+        raise RuntimeError(f"Solver failed during {context} with status: {results.solver.termination_condition}")
+    
+    return False
 
 
 def fast_mass_balance_mixer(m, config_data):
@@ -460,12 +512,17 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
             
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] Verifying initial solution...")
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] About to call solver.solve() for verification")
-            results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 300,  # 5 minutes for verification
+                'tol': 1e-5,  # Relaxed for faster convergence
+                'constr_viol_tol': 1e-5,
+                'print_level': 0  # Suppress all IPOPT output
+            })
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] solver.solve() verification completed")
             
-            if results.solver.termination_condition != TerminationCondition.optimal:
-                logger.warning(f"Initial solution not optimal: {results.solver.termination_condition}")
-                logger.warning("Proceeding with pump optimization anyway...")
+            if not check_solver_status(results, context="Initial verification", raise_on_fail=False):
+                logger.warning("Initial solution not optimal, but proceeding with pump optimization...")
             
             # Now unfix pumps and add recovery constraints
             for i in range(1, n_stages + 1):
@@ -508,11 +565,18 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 prev_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
                 
                 # Solve model
-                results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+                results = solver.solve(m, tee=False, options={
+                    'linear_solver': 'ma27',
+                    'max_cpu_time': 600,  # 10 minutes for main solve
+                    'tol': 1e-6,  # Moderately relaxed for balance of speed/accuracy
+                    'constr_viol_tol': 1e-6,
+                    'acceptable_tol': 1e-3,  # Fallback for difficult problems
+                    'acceptable_constr_viol_tol': 1e-3,
+                    'print_level': 0,  # Suppress all IPOPT output
+                })
                 
-                if results.solver.termination_condition != TerminationCondition.optimal:
-                    logger.error(f"Iteration {iteration+1}: Solver failed - {results.solver.termination_condition}")
-                    raise RuntimeError(f"Solver failed during recycle iteration {iteration+1}")
+                # Check solver status
+                check_solver_status(results, context=f"Recycle iteration {iteration+1}", raise_on_fail=True)
                 
                 # Check convergence
                 curr_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
@@ -527,11 +591,18 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 logger.warning(f"Did not converge after {max_iter} iterations")
         else:
             # Single solve for non-recycle or fixed pump cases
-            results = solver.solve(m, tee=False, options={'linear_solver': 'ma27'})
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 600,  # 10 minutes for main solve
+                'tol': 1e-6,  # Moderately relaxed for balance of speed/accuracy
+                'constr_viol_tol': 1e-6,
+                'acceptable_tol': 1e-3,  # Fallback for difficult problems
+                'acceptable_constr_viol_tol': 1e-3,
+                'print_level': 0  # Suppress all IPOPT output
+            })
             
-            if results.solver.termination_condition != TerminationCondition.optimal:
-                logger.error(f"Solver failed: {results.solver.termination_condition}")
-                raise RuntimeError(f"Solver failed: {results.solver.termination_condition}")
+            # Check solver status
+            check_solver_status(results, context="Main solve", raise_on_fail=True)
         
         logger.info("\n=== Solution Complete ===")
         
@@ -607,7 +678,15 @@ def initialize_model_sequential(m, config_data):
             arc_name = f"ro_stage{i-1}_to_pump{i}"
             propagate_state(arc=getattr(m.fs, arc_name))
         
-        pump.initialize(outlvl=idaeslog.NOTSET)
+        pump.initialize(
+            outlvl=idaeslog.NOTSET,
+            optarg={
+                'tol': 1e-4,
+                'constr_viol_tol': 1e-4,
+                'max_cpu_time': 30,
+                'max_iter': 50
+            }
+        )
         
         # Initialize RO
         ro = getattr(m.fs, f"ro_stage{i}")
@@ -620,7 +699,17 @@ def initialize_model_sequential(m, config_data):
             propagate_state(arc=getattr(m.fs, arc_name))
         
         # Initialize RO
-        ro.initialize(outlvl=idaeslog.NOTSET)
+        ro.initialize(
+            outlvl=idaeslog.NOTSET,
+            optarg={
+                'tol': 1e-4,
+                'constr_viol_tol': 1e-4,
+                'acceptable_tol': 1e-2,
+                'acceptable_constr_viol_tol': 1e-2,
+                'max_cpu_time': 60,
+                'max_iter': 100
+            }
+        )
         
         # Initialize stage product
         if i == 1:

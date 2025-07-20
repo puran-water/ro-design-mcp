@@ -197,3 +197,68 @@ def format_error_response(error: Exception, request_params: Dict[str, Any]) -> D
         },
         "configurations": []
     }
+
+
+def format_simulation_response(sim_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Format simulation results for MCP response.
+    
+    This ensures the simulation results are properly structured for
+    the MCP client, similar to how optimize_ro_configuration formats
+    its responses.
+    
+    Args:
+        sim_results: Raw simulation results from run_ro_simulation
+        
+    Returns:
+        Formatted response dictionary
+    """
+    # If already has proper status field, validate it
+    if "status" in sim_results:
+        if sim_results["status"] == "error":
+            return sim_results  # Already formatted error response
+        elif sim_results["status"] != "success":
+            # Handle partial or other statuses
+            return {
+                "status": sim_results["status"],
+                "message": sim_results.get("message", "Simulation completed with warnings"),
+                "results": {
+                    "performance": sim_results.get("performance", {}),
+                    "economics": sim_results.get("economics", {}),
+                    "stage_results": sim_results.get("stage_results", []),
+                    "mass_balance": sim_results.get("mass_balance", {}),
+                    "ion_analysis": sim_results.get("ion_tracking", {})
+                }
+            }
+    
+    # Format successful response
+    response = {
+        "status": "success",
+        "message": "RO system simulation completed successfully",
+        "results": {
+            "performance": sim_results.get("performance", {}),
+            "economics": sim_results.get("economics", {}),
+            "stage_results": sim_results.get("stage_results", []),
+            "mass_balance": sim_results.get("mass_balance", {}),
+            "ion_analysis": sim_results.get("ion_tracking", {})
+        }
+    }
+    
+    # Add optional fields if present
+    if "solve_info" in sim_results:
+        response["solve_info"] = sim_results["solve_info"]
+    
+    if "trace_ion_info" in sim_results:
+        response["results"]["trace_ion_info"] = sim_results["trace_ion_info"]
+    
+    # Add summary metrics for easy access
+    if sim_results.get("performance"):
+        perf = sim_results["performance"]
+        response["summary"] = {
+            "system_recovery": perf.get("system_recovery", 0),
+            "permeate_tds_mg_l": perf.get("total_permeate_tds_mg_l", 0),
+            "specific_energy_kwh_m3": perf.get("specific_energy_kWh_m3", 0),
+            "total_power_kw": sim_results.get("economics", {}).get("total_power_kw", 0)
+        }
+    
+    return response
