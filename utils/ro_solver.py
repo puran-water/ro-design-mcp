@@ -347,7 +347,17 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
         # Initialize stages with elegant initialization
         logger.info(f"[TIMING {time.time()-start_time:.1f}s] === Initializing RO Stages ===")
         
-        current_tds_ppm = feed_tds_ppm
+        # For Stage 1, use mixer outlet TDS (accounts for recycle)
+        # For subsequent stages, track concentrate TDS progression
+        if has_recycle:
+            # Use actual mixed feed TDS for Stage 1
+            current_tds_ppm = mixer_tds_ppm
+            logger.info(f"Using mixer outlet TDS for Stage 1: {current_tds_ppm:.0f} ppm (elevated due to recycle)")
+        else:
+            # Non-recycle: mixer TDS equals feed TDS
+            current_tds_ppm = feed_tds_ppm
+            logger.info(f"Using feed TDS for Stage 1: {current_tds_ppm:.0f} ppm (no recycle)")
+        
         for i in range(1, n_stages + 1):
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] --- Stage {i} ---")
             
@@ -403,10 +413,28 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
             safety_factor = 1.1 + 0.1 * (i - 1) + 0.2 * max(0, target_recovery - 0.5)
             required_pressure = min(required_pressure * safety_factor, 80e5)
             
-            # Initialize pump with fixed pressure
+            # Initialize pump with fixed pressure (with retry on failure)
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting pump{i} initialization")
-            initialize_pump_with_pressure(pump, required_pressure)
-            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Pump{i} initialized")
+            try:
+                initialize_pump_with_pressure(pump, required_pressure)
+                logger.info(f"[TIMING {time.time()-start_time:.1f}s] Pump{i} initialized")
+            except Exception as e:
+                error_msg = str(e)
+                if "Inlet pressure" in error_msg and "too low" in error_msg:
+                    # Extract minimum pressure from error message
+                    import re
+                    match = re.search(r"Need at least ([\d.]+) bar", error_msg)
+                    if match:
+                        min_pressure_bar = float(match.group(1))
+                        retry_pressure = min_pressure_bar * 1.2e5  # Convert to Pa with 20% safety margin
+                        logger.warning(f"Initial pressure {required_pressure/1e5:.1f} bar too low.")
+                        logger.info(f"Retrying with {retry_pressure/1e5:.1f} bar (min required: {min_pressure_bar:.1f} bar)")
+                        initialize_pump_with_pressure(pump, retry_pressure)
+                        logger.info(f"[TIMING {time.time()-start_time:.1f}s] Pump{i} initialized with retry pressure")
+                    else:
+                        raise  # Re-raise if we can't parse the minimum pressure
+                else:
+                    raise  # Re-raise if it's not a pressure-related error
             
             # Propagate to RO (handle both arc naming conventions)
             arc_name_stage = f"pump{i}_to_ro_stage{i}"
