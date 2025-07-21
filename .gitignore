@@ -105,14 +105,20 @@ idaes_cache/
 .idaes/
 
 # Project specific
-results/*.ipynb
-results/*.json
+results/
 test_results/
 test_results_basic/
 *.log
 debug_*.py
 test_output*.ipynb
 economics_analysis_*.json
+future/
+reference/
+MULTI_ION_DEFENSE.md
+modal_config.py
+run_tests.py
+install.bat
+install.ps1
 
 # Temporary files
 *.tmp

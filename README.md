@@ -49,19 +49,11 @@ cp .env.example .env
 
 4. **Install all dependencies:**
 
-**Windows (PowerShell) - Recommended:**
-```powershell
-.\install.ps1
-```
-
-**Windows (Command Prompt):**
-```batch
-install.bat
-```
-
-**Linux/macOS:**
 ```bash
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install IDAES extensions (required for optimization solvers)
 idaes get-extensions --verbose
 ```
 
@@ -196,19 +188,13 @@ results = await simulate_ro_system(
 
 ## Deployment
 
-### Modal Deployment
+### Production Deployment
 
-For serverless deployment using Modal:
-
-1. Install Modal: `pip install modal`
-2. Set up Modal authentication: `modal token new`
-3. Deploy using `modal_config.py`:
-
-```bash
-modal deploy modal_config.py
-```
-
-See `modal_config.py` for endpoint examples and configuration.
+For production deployments, consider:
+- Using a process manager (e.g., systemd, supervisor)
+- Setting appropriate resource limits
+- Configuring logging and monitoring
+- Using environment-specific configuration files
 
 ### Docker Deployment
 
@@ -216,20 +202,20 @@ A Dockerfile is available for containerized deployment (coming soon).
 
 ## Technical Details
 
-### Membrane Database
+### Membrane Properties
 
-The server includes pre-configured properties for common membranes:
+The server includes pre-configured properties for two membrane types:
 
-**Brackish Water Membranes:**
-- DOW FILMTEC BW30-400
-- Hydranautics CPA5-LD
-- Toray TM720-370
-- DOW FILMTEC BW30XFR-400
+**Membrane Types:**
+- **Brackish Water**: Optimized for feed TDS < 10,000 ppm
+  - Water permeability: 9.63e-12 m/s/Pa
+  - Salt permeability: 5.58e-08 m/s
+  
+- **Seawater**: Optimized for feed TDS > 10,000 ppm
+  - Water permeability: 2.05e-12 m/s/Pa
+  - Salt permeability: 1.61e-08 m/s
 
-**Seawater Membranes:**
-- DOW FILMTEC SW30XHR-440i
-- Hydranautics SWC5
-- Toray TM820M-440
+Custom membrane properties can be specified via the `membrane_properties` parameter.
 
 ### Ion Modeling (MCAS)
 

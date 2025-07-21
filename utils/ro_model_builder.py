@@ -24,6 +24,7 @@ from watertap.unit_models.reverse_osmosis_0D import (
 )
 from watertap.unit_models.pressure_changer import Pump
 from watertap.costing import WaterTAPCosting
+from watertap.costing.unit_models.pump import cost_pump
 from watertap.property_models.multicomp_aq_sol_prop_pack import MCASParameterBlock, MaterialFlowBasis
 from watertap.core.membrane_channel_base import TransportModel
 from watertap.core import ModuleType
@@ -385,10 +386,28 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
         # Add costing to each pump
         for i in range(1, n_stages + 1):
             pump = getattr(m.fs, f"pump{i}")
+            
+            # Determine pump type based on stage pressure requirements
+            # Get expected pressure from configuration
+            stage_data = config_data['stages'][i-1]
+            feed_pressure_bar = stage_data.get('feed_pressure_bar', 30)  # Default to 30 bar
+            
+            # Classify pump type based on pressure
+            # Low pressure: < 45 bar (650 psi)
+            # High pressure: >= 45 bar (650 psi)
+            if feed_pressure_bar < 45:
+                pump_type = "low_pressure"
+                logger.info(f"Stage {i} pump classified as low_pressure ({feed_pressure_bar:.1f} bar)")
+            else:
+                pump_type = "high_pressure"
+                logger.info(f"Stage {i} pump classified as high_pressure ({feed_pressure_bar:.1f} bar)")
+            
             pump.costing = UnitModelCostingBlock(
-                flowsheet_costing_block=m.fs.costing
+                flowsheet_costing_block=m.fs.costing,
+                costing_method=cost_pump,
+                costing_method_arguments={"pump_type": pump_type}
             )
-            logger.info(f"Added costing block to pump{i}")
+            logger.info(f"Added {pump_type} costing block to pump{i}")
         
         # Add costing to each RO stage
         for i in range(1, n_stages + 1):
