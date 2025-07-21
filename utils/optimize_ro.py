@@ -437,7 +437,7 @@ def optimize_vessel_array_configuration(
         working_solutions = []
         
         # Search over different effective recovery values
-        effective_recoveries = np.linspace(0.60, 0.85, 26)
+        effective_recoveries = np.linspace(0.5, 0.9, 100)
         
         for eff_recovery in effective_recoveries:
             # For a given effective recovery, calculate required effective feed

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "MCP server for reverse osmosis system design optimization"
 readme = "README.md"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "RO Design MCP Contributors"}
 ]
 license = {text = "MIT"}
 requires-python = ">=3.10"

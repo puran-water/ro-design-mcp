@@ -1,8 +1,12 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -16,72 +20,107 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Virtual Environment
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
 venv/
 ENV/
-env/
-venv312/
+env.bak/
+venv.bak/
+venv*/
 
-# IDE
+# IDE settings
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Project specific
+# IDAES/WaterTAP specific
 *.log
-debug.log
-.env
-.env.local
-.env.*.local
+idaes.conf
+idaes_cache/
+.idaes/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*_backup*.ipynb
-*_original.ipynb
-output_notebooks/
+# Project specific
+results/*.ipynb
+results/*.json
+test_results/
+test_results_basic/
+*.log
+debug_*.py
+test_output*.ipynb
+economics_analysis_*.json
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-test_*.py
-*_test.py
-test_*_output.ipynb
-test_output_*.ipynb
-
-# Documentation
-docs/_build/
-*_TEST_*.md
-*_FIX_*.md
-*_SUMMARY.md
-*_IMPLEMENTATION*.md
-*_SOLUTION*.md
-*_REPORT*.md
-*_improvements*.md
-*_analysis.md
-*_diagnosis.md
-*_debugging*.md
-*_snippet.py
-fix_*.py
-
-# Temporary outputs
-*.html
-results_*.json
+# Temporary files
 *.tmp
 *.temp
+*.bak
 
-# Package managers
-pip-log.txt
-pip-delete-this-directory.txt
+# Modal deployment
+.modal/
+
+# Local configuration
+local_config.yaml
