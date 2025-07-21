@@ -26,7 +26,7 @@ A comprehensive Model Context Protocol (MCP) server for reverse osmosis (RO) sys
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/yourusername/ro-design-mcp.git
+git clone https://github.com/puran-water/ro-design-mcp.git
 cd ro-design-mcp
 ```
 
@@ -93,7 +93,6 @@ The server uses environment variables for configuration. Key variables:
 
 - `LOCALAPPDATA`: Required by IDAES (auto-set if not provided)
 - `PROJECT_ROOT`: Project root directory (auto-detected if not set)
-- `VENV_PATH`: Virtual environment path (for installation scripts)
 
 See `.env.example` for all available options.
 
@@ -196,9 +195,6 @@ For production deployments, consider:
 - Configuring logging and monitoring
 - Using environment-specific configuration files
 
-### Docker Deployment
-
-A Dockerfile is available for containerized deployment (coming soon).
 
 ## Technical Details
 
@@ -276,18 +272,19 @@ ro-design-mcp/
 
 ### Contributing
 
+Contributions are welcome! Please:
+
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes with clear messages
+4. Push to your fork and submit a Pull Request
 
 ### Code Style
 
-- Python 3.10+ type hints
-- Black formatting (88 char line length)
-- Comprehensive docstrings
-- pytest for all new features
+- Python 3.10+ with type hints
+- Clear docstrings for all functions
+- Follow existing code patterns
+- Add tests for new features
 
 ## Troubleshooting
 
@@ -312,18 +309,6 @@ pip install watertap --upgrade
 - Check ion charge balance
 - Verify concentrations sum approximately to TDS
 
-## Citation
-
-If you use this software in your research, please cite:
-
-```bibtex
-@software{ro_design_mcp,
-  title = {RO Design MCP Server},
-  author = {RO Design MCP Contributors},
-  year = {2025},
-  url = {https://github.com/yourusername/ro-design-mcp}
-}
-```
 
 ## License
 

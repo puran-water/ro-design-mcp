@@ -119,6 +119,13 @@ modal_config.py
 run_tests.py
 install.bat
 install.ps1
+run_economic_test.ps1
+pytest.ini
+.coveragerc
+__pycache__/
+.pytest_cache/
+.env
+.claude/
 
 # Temporary files
 *.tmp

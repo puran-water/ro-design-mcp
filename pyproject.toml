@@ -8,10 +8,12 @@ version = "0.1.0"
 description = "MCP server for reverse osmosis system design optimization"
 readme = "README.md"
 authors = [
-    {name = "RO Design MCP Contributors"}
+    {name = "Puran Water"}
 ]
 license = {text = "MIT"}
 requires-python = ">=3.10"
+homepage = "https://github.com/puran-water/ro-design-mcp"
+repository = "https://github.com/puran-water/ro-design-mcp"
 dependencies = [
     "fastmcp>=0.1.0",
     "numpy>=1.24.0",
