@@ -126,6 +126,7 @@ __pycache__/
 .pytest_cache/
 .env
 .claude/
+artifacts/
 
 # Temporary files
 *.tmp

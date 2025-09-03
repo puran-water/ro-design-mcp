@@ -228,7 +228,8 @@ def refine_recycle_composition(m, config_data, iteration=1):
     logger.info(f"Refining recycle composition (iteration {iteration})")
     
     # Get actual concentrate from last stage
-    last_stage = config_data['stage_count']
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    last_stage = n_stages
     concentrate = getattr(m.fs, f'ro_stage{last_stage}').retentate
     
     # Calculate actual concentrate composition
@@ -798,7 +799,8 @@ def initialize_model_sequential(m, config_data):
         raise AttributeError("Flowsheet missing feed block (expected 'fresh_feed' or 'feed')")
     
     # Initialize stages sequentially
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         logger.info(f"\nInitializing Stage {i}...")
         
         # Initialize pump
@@ -891,7 +893,8 @@ def initialize_with_block_triangularization(m, config_data):
     
     # Initialize each unit in sequence
     units = [m.fs.feed]
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         units.append(getattr(m.fs, f"pump{i}"))
         units.append(getattr(m.fs, f"ro_stage{i}"))
         units.append(getattr(m.fs, f"stage_product{i}"))
@@ -919,13 +922,15 @@ def initialize_with_custom_guess(m, config_data):
     }
     
     # Set pump pressures
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         pump = getattr(m.fs, f"pump{i}")
         if i in stage_pressures:
             pump.outlet.pressure.set_value(stage_pressures[i])
     
     # Set RO recoveries based on configuration (as initial guesses only)
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         ro = getattr(m.fs, f"ro_stage{i}")
         stage_data = config_data['stages'][i-1]
         target_recovery = stage_data.get('stage_recovery', 0.5)
@@ -941,7 +946,8 @@ def initialize_with_custom_guess(m, config_data):
     # Set approximate flows
     feed_flow = config_data['feed_flow_m3h'] / 3600  # m³/s
     
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         ro = getattr(m.fs, f"ro_stage{i}")
         
         # Approximate permeate and concentrate flows
@@ -971,7 +977,8 @@ def initialize_with_relaxation(m, config_data):
     
     # Initialize units
     units = [m.fs.feed]
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         units.append(getattr(m.fs, f"pump{i}"))
         units.append(getattr(m.fs, f"ro_stage{i}"))
     
@@ -1009,7 +1016,8 @@ def initialize_model_advanced(m, config_data, strategy="sequential"):
     
     # Verify initialization
     logger.info("\nChecking initialization...")
-    for i in range(1, config_data['stage_count'] + 1):
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
+    for i in range(1, n_stages + 1):
         ro = getattr(m.fs, f"ro_stage{i}")
         perm_flow = value(sum(
             ro.permeate.flow_mass_phase_comp[0, 'Liq', comp]

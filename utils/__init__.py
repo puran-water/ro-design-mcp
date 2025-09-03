@@ -24,7 +24,6 @@ from .constants import (
     STOKES_RADIUS_DATA,
     DEFAULT_SALT_PASSAGE
 )
-from .notebook_runner import run_configuration_report
 
 # RO Model building and solving functions
 from .ro_model_builder import (
@@ -110,8 +109,5 @@ __all__ = [
     "build_mcas_property_configuration",
     "check_electroneutrality",
     "get_total_dissolved_solids",
-    "calculate_ionic_strength",
-    
-    # Notebook runner
-    "run_configuration_report"
+    "calculate_ionic_strength"
 ]

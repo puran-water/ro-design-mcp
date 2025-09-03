@@ -5,6 +5,10 @@ RO Design MCP Server
 
 An STDIO MCP server for reverse osmosis system design optimization.
 Provides tools for vessel array configuration and WaterTAP simulation.
+
+Note: The simulation tool runs WaterTAP in a child Python process to
+isolate stdout/stderr from the MCP stdio transport and avoid protocol
+corruption or deadlocks from solver/native output.
 """
 
 import os
@@ -55,6 +59,23 @@ from utils.response_formatter import (
 from utils.helpers import validate_salinity
 from utils.stdout_redirect import redirect_stdout_to_stderr
 
+# Import direct simulation and artifact management
+from utils.simulate_ro import run_ro_simulation
+from utils.artifacts import (
+    deterministic_run_id,
+    check_existing_results,
+    write_artifacts,
+    capture_context,
+    artifacts_root
+)
+from utils.schemas import (
+    ROSimulationInput,
+    ROConfiguration,
+    FeedComposition,
+    SimulationOptions,
+    MembraneProperties
+)
+
 # Configure logging for MCP - CRITICAL for protocol integrity
 from utils.logging_config import configure_mcp_logging, get_configured_logger
 configure_mcp_logging()
@@ -62,6 +83,63 @@ logger = get_configured_logger(__name__)
 
 # Create FastMCP instance
 mcp = FastMCP("RO Design Server")
+
+# Async-friendly subprocess runner for simulation isolation
+import anyio
+import subprocess
+
+PROJECT_ROOT = Path(__file__).parent
+
+
+def _run_simulation_in_subprocess(sim_input: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Run the WaterTAP simulation in a child Python process to isolate stdout.
+
+    This prevents any native or solver-level output from corrupting the MCP STDIO
+    channel in the parent process.
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "utils.simulate_ro_cli"],
+            input=json.dumps(sim_input),
+            text=True,
+            capture_output=True,
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
+
+        if proc.returncode != 0:
+            logger.error(f"Child simulation process failed (code {proc.returncode}). Stderr: {proc.stderr[:2000]}")
+            try:
+                return json.loads(proc.stdout) if proc.stdout else {
+                    "status": "error",
+                    "message": f"Child process failed with code {proc.returncode}",
+                    "stderr": proc.stderr,
+                }
+            except json.JSONDecodeError:
+                return {
+                    "status": "error",
+                    "message": f"Child process failed and returned non-JSON stdout",
+                    "stderr": proc.stderr,
+                    "raw_stdout": proc.stdout,
+                }
+
+        # Parse JSON from child's stdout
+        try:
+            return json.loads(proc.stdout) if proc.stdout else {
+                "status": "error",
+                "message": "No output from child process",
+            }
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse child JSON: {e}. Raw: {proc.stdout[:500]}")
+            return {
+                "status": "error",
+                "message": f"Invalid JSON from child process: {e}",
+                "raw_stdout": proc.stdout,
+            }
+    except Exception as e:
+        logger.error(f"Exception launching child process: {e}")
+        return {"status": "error", "message": f"Failed to launch child process: {e}"}
 
 
 @mcp.tool()
@@ -207,9 +285,9 @@ async def simulate_ro_system(
     """
     Run WaterTAP simulation for the specified RO configuration using MCAS property package.
     
-    This tool executes a parameterized Jupyter notebook that creates a WaterTAP model
+    This tool executes a direct Python simulation that creates a WaterTAP model
     with detailed ion modeling, runs the simulation, and returns complete results.
-    The notebook runs in a subprocess to avoid blocking issues.
+    Results are cached using deterministic run IDs for idempotency.
     
     Args:
         configuration: Output from optimize_ro_configuration tool
@@ -226,10 +304,10 @@ async def simulate_ro_system(
         - status: "success" indicating simulation completed successfully  
         - results: Complete simulation results including performance, economics, etc.
         - message: Status message with execution time
-        - notebook_path: Path to the output notebook for reference
+        - artifact_dir: Path to artifact directory for reproducibility
     
     Note:
-        This tool waits for simulation completion and returns full results in one call.
+        This tool uses deterministic run IDs based on inputs for caching.
         Typical execution time is 20-30 seconds for standard configurations.
     
     Example:
@@ -246,10 +324,6 @@ async def simulate_ro_system(
         ```
     """
     try:
-        import papermill as pm
-        from pathlib import Path
-        from datetime import datetime
-        
         # Validate inputs first
         if not isinstance(configuration, dict):
             raise ValueError("configuration must be a dictionary from optimize_ro_configuration")
@@ -277,144 +351,125 @@ async def simulate_ro_system(
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
         
-        # Create output directory if it doesn't exist
-        output_dir = Path(__file__).parent / "results"
-        output_dir.mkdir(exist_ok=True)
-        
-        # Generate unique output filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"ro_simulation_mcas_{timestamp}.ipynb"
-        output_path = output_dir / output_filename
-        
-        # Select appropriate notebook template
-        template_path = Path(__file__).parent / "notebooks" / "ro_simulation_mcas_template.ipynb"
-        
-        if not template_path.exists():
-            raise FileNotFoundError(f"Notebook template not found: {template_path}")
-        
-        # Configuration from optimize_ro_configuration should always have feed_flow_m3h
-        # Log it for debugging
-        if "feed_flow_m3h" in configuration:
-            logger.info(f"Using feed_flow_m3h from configuration: {configuration['feed_flow_m3h']} m³/h")
-        else:
-            logger.warning("feed_flow_m3h not found in configuration - this should not happen with current optimize_ro_configuration")
-        
-        # Prepare parameters for notebook
-        parameters = {
-            "project_root": str(Path(__file__).parent),
+        # Create input payload for deterministic run_id
+        input_payload = {
             "configuration": configuration,
             "feed_salinity_ppm": feed_salinity_ppm,
-            "feed_ion_composition": feed_ion_composition,  # Pass as string, notebook will parse
+            "feed_ion_composition": parsed_ion_composition,  # Use parsed dict, not string
+            "feed_temperature_c": feed_temperature_c,
+            "membrane_type": membrane_type,
+            "membrane_properties": membrane_properties or {},
+            "optimize_pumps": optimize_pumps
+        }
+        
+        # Generate deterministic run ID
+        run_id = deterministic_run_id(
+            tool_name="simulate_ro_system",
+            input_payload=input_payload
+        )
+        
+        logger.info(f"Generated run_id: {run_id}")
+        
+        # Check for existing results (idempotency)
+        existing_results = check_existing_results(run_id)
+        if existing_results:
+            logger.info(f"Found cached results for run_id: {run_id}")
+            artifact_dir = artifacts_root() / run_id
+            return {
+                "status": "success",
+                "message": "Using cached results",
+                "results": existing_results,
+                "artifact_dir": str(artifact_dir),
+                "run_id": run_id,
+                "cached": True
+            }
+        
+        # Log the request
+        logger.info(f"Starting simulation for {configuration.get('array_notation', 'unknown')} array")
+        logger.info(f"Run ID: {run_id}")
+        
+        # Start timing
+        start_time = time.time()
+        
+        # Run simulation in isolated child process to keep MCP STDIO safe
+        logger.info("Running simulation in child process...")
+        sim_input = {
+            "configuration": configuration,
+            "feed_salinity_ppm": feed_salinity_ppm,
+            "feed_ion_composition": parsed_ion_composition,
             "feed_temperature_c": feed_temperature_c,
             "membrane_type": membrane_type,
             "membrane_properties": membrane_properties,
             "optimize_pumps": optimize_pumps,
-            "initialization_strategy": "sequential"
+            "initialization_strategy": "sequential",
+            "use_nacl_equivalent": True,
         }
-        
-        # Log the request
-        logger.info(f"Starting notebook execution for {configuration.get('array_notation', 'unknown')} array")
-        logger.info(f"Output notebook: {output_path}")
-        
-        # Execute notebook - this waits for completion (subprocess isolation prevents blocking)
-        start_time = time.time()
-        
-        pm.execute_notebook(
-            str(template_path),
-            str(output_path),
-            parameters=parameters,
-            kernel_name="python3",
-            start_timeout=60,  # Allow 60 seconds for kernel startup
-            execution_timeout=1800  # Allow 30 minutes for execution
-        )
+
+        simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
         
         execution_time = time.time() - start_time
-        logger.info(f"Notebook execution completed in {execution_time:.1f} seconds")
+        logger.info(f"Simulation completed in {execution_time:.1f} seconds")
         
-        # Immediately extract results from the completed notebook
-        try:
-            # Import result extraction functions
-            import nbformat
-            
-            # Read the completed notebook
-            with open(output_path, 'r', encoding='utf-8') as f:
-                nb = nbformat.read(f, as_version=4)
-            
-            # Look for the results cell (tagged with "results")
-            results_data = None
-            for cell in nb.cells:
-                if (cell.cell_type == 'code' and 
-                    'tags' in cell.metadata and 
-                    'results' in cell.metadata.tags and
-                    cell.outputs):
-                    
-                    # Extract results from the output
-                    for output in cell.outputs:
-                        if output.get('output_type') == 'execute_result':
-                            if 'data' in output and 'text/plain' in output['data']:
-                                results_str = output['data']['text/plain']
-                                # Parse the results safely
-                                import ast
-                                try:
-                                    results_data = ast.literal_eval(results_str)
-                                    break
-                                except:
-                                    try:
-                                        results_data = json.loads(results_str)
-                                        break
-                                    except:
-                                        logger.warning("Could not parse results from notebook")
-                    
-                    if results_data:
-                        break
-            
-            if results_data:
-                # Add execution metadata
-                results_data["execution_info"] = {
-                    "execution_time_seconds": execution_time,
-                    "notebook_path": str(output_path),
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                return {
-                    "status": "success",
-                    "message": f"Simulation completed successfully in {execution_time:.1f} seconds",
-                    "results": results_data,
-                    "notebook_path": str(output_path)
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": "Simulation completed but no results found in notebook",
-                    "notebook_path": str(output_path),
-                    "execution_time_seconds": execution_time
-                }
-                
-        except Exception as e:
-            logger.error(f"Error extracting results: {str(e)}")
+        # Check if simulation was successful
+        if simulation_results["status"] != "success":
+            logger.error(f"Simulation failed: {simulation_results.get('message', 'Unknown error')}")
             return {
-                "status": "partial_success",
-                "message": f"Simulation completed in {execution_time:.1f}s but failed to extract results: {str(e)}",
-                "notebook_path": str(output_path),
+                "status": "error",
+                "message": simulation_results.get("message", "Simulation failed"),
+                "error_details": simulation_results,
                 "execution_time_seconds": execution_time,
-                "instructions": "Use get_simulation_results tool to manually extract results"
+                "run_id": run_id
             }
+        
+        # Capture execution context
+        context = capture_context(
+            tool_name="simulate_ro_system",
+            run_id=run_id
+        )
+        
+        # Prepare warnings list
+        warnings = []
+        if "trace_ion_info" in simulation_results:
+            warnings.append(f"Trace ion handling applied: {simulation_results['trace_ion_info']['handling_strategy']}")
+        if "warnings" in simulation_results:
+            warnings.extend(simulation_results["warnings"])
+        
+        # Write artifacts
+        logger.info(f"Writing artifacts to {run_id}/")
+        artifact_dir = write_artifacts(
+            run_id=run_id,
+            tool_name="simulate_ro_system",
+            input_data=input_payload,
+            results_data=simulation_results,
+            context=context,
+            warnings=warnings if warnings else None
+        )
+        
+        # Add execution metadata to results
+        simulation_results["execution_info"] = {
+            "execution_time_seconds": execution_time,
+            "timestamp": datetime.now().isoformat(),
+            "run_id": run_id
+        }
+        
+        logger.info(f"Simulation completed successfully in {execution_time:.1f} seconds")
+        
+        return {
+            "status": "success",
+            "message": f"Simulation completed successfully in {execution_time:.1f} seconds",
+            "results": simulation_results,
+            "artifact_dir": str(artifact_dir),
+            "run_id": run_id,
+            "cached": False
+        }
         
     except ImportError as e:
-        if "papermill" in str(e):
-            logger.error("Papermill not available")
-            return {
-                "status": "error",
-                "error": "Papermill not installed",
-                "message": "Please install papermill to use notebook-based simulation"
-            }
-        else:
-            logger.error(f"Import error: {str(e)}")
-            return {
-                "status": "error",
-                "error": "Dependencies not installed",
-                "message": f"Missing dependency: {str(e)}"
-            }
+        logger.error(f"Import error: {str(e)}")
+        return {
+            "status": "error",
+            "error": "Dependencies not installed",
+            "message": f"Missing dependency: {str(e)}"
+        }
     except Exception as e:
         logger.error(f"Error in simulate_ro_system: {str(e)}")
         return {

@@ -470,7 +470,7 @@ def initialize_multistage_ro_elegant(
         config_data: Configuration dictionary from configure_ro tool
         verbose: Print detailed progress
     """
-    n_stages = config_data['stage_count']
+    n_stages = config_data.get('n_stages', config_data.get('stage_count', 1))
     
     if verbose:
         logger.info(f"Initializing {n_stages}-stage RO system")

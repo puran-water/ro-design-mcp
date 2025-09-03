@@ -21,7 +21,20 @@
       "Bash(cat:*)",
       "mcp__ro-design-mcp__optimize_ro_configuration",
       "mcp__ro-design-mcp__simulate_ro_system",
-      "mcp__codex__codex"
+      "mcp__codex__codex",
+      "Read(/mnt/c/Users/hvksh/.cache/**)",
+      "Read(/home/hvksh/.cache/**)",
+      "Read(/home/hvksh/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
+      "Bash(git add:*)"
     ],
     "deny": []
   },
