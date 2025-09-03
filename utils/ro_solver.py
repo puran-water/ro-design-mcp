@@ -27,6 +27,10 @@ try:
 except ImportError:
     BlockTriangularizationInitializer = None
 from watertap.core.solvers import get_solver
+from watertap.unit_models.reverse_osmosis_0D import (
+    ConcentrationPolarizationType,
+    MassTransferCoefficient
+)
 
 # Import the required function from ro_initialization - avoid circular imports
 from .ro_initialization import (
@@ -41,6 +45,44 @@ from .ro_initialization import (
 from .logging_config import get_configured_logger
 from .stdout_redirect import redirect_stdout_to_stderr
 logger = get_configured_logger(__name__)
+
+
+def deactivate_cp_equations(model, n_stages):
+    """
+    Temporarily deactivate concentration polarization equations to avoid FBBT issues.
+    
+    Args:
+        model: Pyomo model
+        n_stages: Number of RO stages
+    
+    Returns:
+        list: Deactivated constraints for later reactivation
+    """
+    deactivated = []
+    for i in range(1, n_stages + 1):
+        ro = getattr(model.fs, f"ro_stage{i}")
+        if hasattr(ro.feed_side, 'eq_concentration_polarization'):
+            ro.feed_side.eq_concentration_polarization.deactivate()
+            deactivated.append(ro.feed_side.eq_concentration_polarization)
+            logger.info(f"Stage {i}: Deactivated concentration polarization equations")
+    return deactivated
+
+
+def reactivate_cp_equations(deactivated_constraints):
+    """
+    Reactivate concentration polarization equations after initialization.
+    
+    Args:
+        deactivated_constraints: List of deactivated constraints
+    """
+    for constraint in deactivated_constraints:
+        constraint.activate()
+    if deactivated_constraints:
+        logger.info(f"Reactivated {len(deactivated_constraints)} concentration polarization constraints")
+
+
+# Note: Removed switch_to_calculated_cp function as we cannot change configuration after build
+# CP type must be set at construction time
 
 
 def check_solver_status(results, context="solve", raise_on_fail=True):
@@ -456,6 +498,35 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                             # Touch the variable to ensure it's built
                             ro.feed_side.properties[t, x].mass_frac_phase_comp
             
+            # Check and clean up any lingering charge_balance constraints from upstream assertions
+            # This prevents negative DOF issues at the RO inlet
+            if hasattr(ro.feed_side, 'properties_in'):
+                inlet_prop = ro.feed_side.properties_in[0]
+                
+                # Check for and remove any lingering charge_balance constraint
+                if hasattr(inlet_prop, 'charge_balance'):
+                    logger.warning(f"Stage {i}: Found lingering charge_balance constraint at RO inlet, removing...")
+                    inlet_prop.del_component(inlet_prop.charge_balance)
+                
+                # Touch properties to ensure they're built (helps FBBT)
+                # This doesn't change DOF, just ensures variables exist
+                try:
+                    if hasattr(inlet_prop, 'mass_frac_phase_comp'):
+                        _ = inlet_prop.mass_frac_phase_comp
+                    if hasattr(inlet_prop, 'conc_mass_phase_comp'):
+                        _ = inlet_prop.conc_mass_phase_comp
+                except Exception:
+                    pass  # Properties might not be needed
+                
+                # Log DOF to verify we're not over-constrained
+                dof = degrees_of_freedom(inlet_prop)
+                if dof != 0:
+                    logger.warning(f"Stage {i}: RO inlet DOF = {dof} (expected 0)")
+                    if dof < 0:
+                        logger.error(f"Stage {i}: Over-constrained inlet block! Check for extra fixed variables.")
+                else:
+                    logger.info(f"Stage {i}: RO inlet DOF = 0 (correct)")
+            
             # Initialize RO with elegant approach
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting RO{i} initialization")
             initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
@@ -529,6 +600,56 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
             h2o_perm = value(ro.permeate.flow_mass_phase_comp[0, 'Liq', 'H2O'])
             recovery = h2o_perm / h2o_in if h2o_in > 0 else 0
             logger.info(f"Stage {i} initial recovery: {recovery:.3f}")
+        
+        # Two-stage initialization: First solve with CP deactivated, then reactivate
+        logger.info("\n=== Stage 1: Initial Solve with CP Deactivated ===")
+        solver = get_solver()
+        
+        # Deactivate CP equations to avoid FBBT issues during initial solve
+        deactivated_cp = deactivate_cp_equations(m, n_stages)
+        
+        if deactivated_cp:
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Initial solve without CP constraints...")
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 300,
+                'tol': 1e-5,
+                'constr_viol_tol': 1e-5,
+                'print_level': 0
+            })
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Initial solve completed")
+            
+            if not check_solver_status(results, context="Stage 1 (no CP)", raise_on_fail=False):
+                logger.warning("Initial solve not optimal, but proceeding...")
+            
+            # Stage 2: Reactivate CP equations and solve again
+            logger.info("\n=== Stage 2: Solve with CP Reactivated ===")
+            reactivate_cp_equations(deactivated_cp)
+            
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Solving with CP constraints...")
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 300,
+                'tol': 1e-5,
+                'constr_viol_tol': 1e-5,
+                'print_level': 0
+            })
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Stage 2 solve completed")
+            
+            if not check_solver_status(results, context="Stage 2 (with CP)", raise_on_fail=False):
+                logger.warning("Stage 2 solve not optimal, but proceeding...")
+        else:
+            # No CP equations to deactivate, solve directly
+            logger.info("No CP equations found, solving directly...")
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 300,
+                'tol': 1e-5,
+                'constr_viol_tol': 1e-5,
+                'print_level': 0
+            })
+            if not check_solver_status(results, context="Initial solve", raise_on_fail=False):
+                logger.warning("Initial solve not optimal, but proceeding...")
         
         # If optimize_pumps, unfix pumps and add recovery constraints
         if optimize_pumps:

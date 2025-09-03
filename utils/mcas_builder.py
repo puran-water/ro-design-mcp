@@ -105,6 +105,9 @@ def check_electroneutrality(
     Returns:
         Tuple of (is_neutral, charge_imbalance_fraction)
     """
+    # Ensure we're working with WaterTAP notation
+    ion_composition = convert_ion_notation(ion_composition)
+    
     total_positive = 0.0
     total_negative = 0.0
     
@@ -155,6 +158,9 @@ def adjust_for_electroneutrality(
     Returns:
         Adjusted ion composition
     """
+    # Ensure we're working with WaterTAP notation
+    ion_composition = convert_ion_notation(ion_composition)
+    
     is_neutral, imbalance = check_electroneutrality(ion_composition)
     
     if is_neutral:
@@ -181,8 +187,20 @@ def adjust_for_electroneutrality(
     # Calculate deficit
     charge_deficit = total_positive - total_negative  # Positive if cation excess
     
-    # Calculate required moles of adjustment ion
+    # Validate adjustment ion charge is appropriate
     adj_charge = ION_DATA[adjustment_ion]["charge"]
+    if charge_deficit > 0 and adj_charge > 0:
+        raise ValueError(
+            f"Cannot use cation {adjustment_ion} to balance cation excess. "
+            f"Choose an anion like Cl_- instead."
+        )
+    elif charge_deficit < 0 and adj_charge < 0:
+        raise ValueError(
+            f"Cannot use anion {adjustment_ion} to balance anion excess. "
+            f"Choose a cation like Na_+ instead."
+        )
+    
+    # Calculate required moles of adjustment ion
     required_mol_l = abs(charge_deficit / adj_charge)
     required_mg_l = required_mol_l * ION_DATA[adjustment_ion]["mw"] * 1000
     
@@ -222,6 +240,9 @@ def build_mcas_from_ions(
     Returns:
         Dictionary configuration for MCAS property package
     """
+    # Convert notation first to ensure proper handling
+    ion_composition = convert_ion_notation(ion_composition)
+    
     # Check and adjust charge balance if requested
     if balance_charge:
         working_composition = adjust_for_electroneutrality(

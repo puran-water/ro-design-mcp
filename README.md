@@ -198,6 +198,19 @@ For production deployments, consider:
 
 ## Technical Details
 
+### Implementation Notes (v1.2.0+)
+
+**FBBT Robustness Enhancements:**
+The server now includes enhanced numerical stability for multi-component simulations:
+
+- **Fixed Mass Transfer Coefficient**: Uses `MassTransferCoefficient.fixed` at K=2e-5 m/s to avoid Sherwood correlation issues
+- **Flux Bounds**: Water flux bounded [1e-6, 3e-2] kg/m²/s to prevent division by zero in concentration polarization
+- **Two-Stage Initialization**: CP equations deactivated during initial solve, then reactivated for final solution
+- **Geometry Handling**: Automatic detection of available variables based on configuration
+- **Multi-Component Support**: Full support for Ca²⁺, Mg²⁺, SO₄²⁻ and other divalent ions
+
+These enhancements resolve previous FBBT (Feasibility-Based Bounds Tightening) failures that occurred with complex ionic compositions.
+
 ### Membrane Properties
 
 The server includes pre-configured properties for two membrane types:

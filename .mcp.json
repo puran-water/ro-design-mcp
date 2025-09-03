@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ro-design-mcp": {
+      "type": "stdio",
+      "command": "/mnt/c/Users/hvksh/mcp-servers/venv312/Scripts/python.exe",
+      "args": [
+        "C:\\Users\\hvksh\\mcp-servers\\ro-design-mcp\\server.py"
+      ],
+      "env": {
+        "MCP_TIMEOUT": "600000",
+        "RO_DESIGN_MCP_ROOT": "C:\\Users\\hvksh\\mcp-servers\\ro-design-mcp",
+        "MCP_SIMULATION_TIMEOUT_S": "280"
+      }
+    }
+  }
+}

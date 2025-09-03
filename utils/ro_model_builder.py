@@ -31,6 +31,8 @@ from watertap.core import ModuleType
 
 # Import membrane properties handler
 from .membrane_properties_handler import get_membrane_properties_mcas
+# Import density estimation function
+from .mcas_builder import estimate_solution_density
 
 # Get logger configured for MCP
 from .logging_config import get_configured_logger
@@ -117,11 +119,15 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
         setattr(m.fs, f"pump{i}", Pump(property_package=m.fs.properties))
         
         # Create RO stage with spiral wound modules
+        # Use calculated CP with fixed K for robustness
+        initial_cp_type = ConcentrationPolarizationType.calculated  # Use calculated CP
+        initial_mass_transfer = MassTransferCoefficient.fixed  # Fix K to avoid correlation issues
+        
         setattr(m.fs, f"ro_stage{i}", ReverseOsmosis0D(
             property_package=m.fs.properties,
             has_pressure_change=True,
-            concentration_polarization_type=ConcentrationPolarizationType.calculated,
-            mass_transfer_coefficient=MassTransferCoefficient.calculated,
+            concentration_polarization_type=initial_cp_type,
+            mass_transfer_coefficient=initial_mass_transfer,
             pressure_change_type=PressureChangeType.fixed_per_stage,
             transport_model=TransportModel.SD,  # Use SD model (Solution-Diffusion)
             module_type=ModuleType.spiral_wound  # Always use spiral wound
@@ -236,30 +242,148 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
         # Fix permeate pressure
         ro.permeate.pressure[0].fix(1 * pyunits.atm)  # 1 atm
         
-        # Channel geometry
-        ro.feed_side.channel_height.fix(0.001)  # 1 mm
-        ro.feed_side.spacer_porosity.fix(0.85)
         
         # Set total membrane area for the stage (all vessels in parallel)
         total_area = stage_data.get('membrane_area_m2', 
                                    stage_data.get('area_m2', 260.16))
         vessel_count = stage_data.get('vessel_count', 1)
+        elements_per_vessel = stage_data.get('elements_per_vessel', 7)
         
         logger.info(f"Stage {i}: Total membrane area = {total_area:.1f} m² "
-                   f"({vessel_count} vessels in parallel)")
+                   f"({vessel_count} vessels × {elements_per_vessel} elements/vessel)")
             
         ro.area.fix(total_area)
         
-        # For calculated mass transfer coefficient with spiral wound modules,
-        # we need to fix either length, width, or inlet Reynolds number.
-        # Let's try fixing inlet Reynolds number to a typical value.
-        if hasattr(ro.feed_side, 'N_Re'):
-            # Typical Reynolds number for spiral wound RO: 100-500
-            # Higher Re for first stage (cleaner water), lower for later stages
-            typical_Re = 300 - 100 * (i - 1)  # 300 for stage 1, 200 for stage 2, etc.
-            ro.feed_side.N_Re[0, 0].fix(typical_Re)
-            logger.info(f"Stage {i}: Fixed inlet Reynolds number = {typical_Re}")
-            # Length and width will be calculated from area and Re
+        # Fix K values for all solutes at both boundary positions
+        # Required when using MassTransferCoefficient.fixed
+        if hasattr(ro.feed_side, 'K'):
+            # Fix at both x=0.0 and x=1.0 for RO0D
+            for x in [0.0, 1.0]:
+                for comp in mcas_config['solute_list']:
+                    # Fix K at typical value for brackish water RO
+                    ro.feed_side.K[0, x, comp].fix(2e-5)  # 20 μm/s
+            logger.info(f"Stage {i}: Fixed K = 2e-5 m/s for all solutes at x=0.0 and x=1.0")
+        
+        # Fix membrane geometry if variables exist
+        # Length/width only exist when K or pressure drop is calculated
+        if hasattr(ro, 'length'):
+            element_length = 1.016  # Standard 40" element length in meters
+            ro.length.fix(element_length)
+            logger.info(f"Stage {i}: Fixed membrane length = {element_length} m (lumped model)")
+        else:
+            logger.info(f"Stage {i}: Length not created (using fixed K, no pressure drop calc)")
+        
+        # Width will be calculated from area and length by WaterTAP
+        # For spiral wound: area = 2 * length * width
+        
+        # Fix channel geometry for spiral wound modules
+        # These variables only exist when CP/K/pressure is calculated
+        if hasattr(ro.feed_side, 'channel_height'):
+            ro.feed_side.channel_height.fix(7.9e-4)  # 31 mil (0.79 mm) feed spacer
+            logger.info(f"Stage {i}: Fixed channel height = 0.79 mm (31 mil feed spacer)")
+        else:
+            logger.info(f"Stage {i}: Channel height not created (not needed for current config)")
+        
+        if hasattr(ro.feed_side, 'spacer_porosity'):
+            ro.feed_side.spacer_porosity.fix(0.85)  # Typical for spiral wound
+            logger.info(f"Stage {i}: Fixed spacer porosity = 0.85")
+        else:
+            logger.info(f"Stage {i}: Spacer porosity not created (not needed for current config)")
+        
+        # CRITICAL FIX: Prevent division by zero in concentration polarization equation
+        # Following WaterTAP best practices for FBBT robustness
+        logger.info(f"Stage {i}: Setting flux bounds and initial values per WaterTAP standards...")
+        
+        # Get water permeability for initial flux estimate
+        A_w = value(ro.A_comp[0, 'H2O'])  # Water permeability coefficient
+        typical_dp = 20e5  # 20 bar typical driving pressure
+        rho_water = 1000  # kg/m³ approximate water density
+        
+        # Set bounds and initial values for water flux (flux variables are on main RO unit)
+        if hasattr(ro, 'flux_mass_phase_comp'):
+            for x in ro.feed_side.length_domain:
+                # Set bounds for water flux to prevent division by zero
+                # Use less restrictive lower bound per Codex recommendation
+                ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setlb(1e-6)  # kg/m²/s minimum (less restrictive)
+                ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setub(3e-2)  # kg/m²/s maximum
+                
+                # Set reasonable initial value based on membrane permeability
+                Jw_init_vol = A_w * typical_dp  # m/s volumetric flux
+                Jw_init_mass = Jw_init_vol * rho_water  # kg/m²/s mass flux
+                # Ensure initial value is within bounds
+                Jw_init_mass = max(1e-6, min(3e-2, Jw_init_mass))
+                ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].set_value(Jw_init_mass)
+                
+            logger.info(f"Stage {i}: Water flux bounds = [1e-6, 3e-2] kg/m²/s, initial = {Jw_init_mass:.2e} kg/m²/s")
+            
+            # Set bounds and initialize solute fluxes based on SD transport model
+            for comp in mcas_config['solute_list']:
+                B_comp = value(ro.B_comp[0, comp])  # Solute permeability
+                # Use feed concentration as initial estimate
+                if comp in mcas_config['ion_composition_mg_l']:
+                    C_bulk_est = mcas_config['ion_composition_mg_l'][comp] * 1e-3  # Convert mg/L to kg/m³
+                else:
+                    C_bulk_est = 1e-3  # Default for unmapped components
+                    
+                for x in ro.feed_side.length_domain:
+                    # WaterTAP standard bounds for solute fluxes
+                    ro.flux_mass_phase_comp[0, x, 'Liq', comp].setlb(0.0)  # Non-negative
+                    ro.flux_mass_phase_comp[0, x, 'Liq', comp].setub(1e-3)  # kg/m²/s maximum (WaterTAP standard)
+                    
+                    # Initialize solute flux: Js = B * C_bulk
+                    Js_init = B_comp * C_bulk_est  # kg/m²/s
+                    Js_init = max(1e-12, min(1e-3, Js_init))  # Ensure within bounds
+                    ro.flux_mass_phase_comp[0, x, 'Liq', comp].set_value(Js_init)
+        else:
+            logger.warning(f"Stage {i}: flux_mass_phase_comp not found on RO unit, skipping flux initialization")
+        
+        
+        # Tighten concentration bounds based on feed composition to prevent FBBT from exploring unrealistic ranges
+        logger.info(f"Stage {i}: Tightening concentration bounds for trace components...")
+        
+        # Access properties at different locations if they exist
+        property_locations = []
+        if hasattr(ro.feed_side, 'properties_in'):
+            property_locations.append(('inlet', ro.feed_side.properties_in[0]))
+        if hasattr(ro.feed_side, 'properties'):
+            for x in ro.feed_side.length_domain:
+                property_locations.append((f'x={x}', ro.feed_side.properties[0, x]))
+        
+        # Get solution density for mass fraction calculations
+        total_tds_mg_l = sum(mcas_config['ion_composition_mg_l'].values())
+        solution_density = 1000 + 0.68 * total_tds_mg_l / 1000  # Approximate density
+        
+        for comp in mcas_config['solute_list']:
+            # Get feed concentration
+            conc_feed_mg_l = mcas_config['ion_composition_mg_l'].get(comp, 1.0)
+            conc_feed_kg_m3 = conc_feed_mg_l * 1e-3
+            mass_frac_feed = conc_feed_kg_m3 / solution_density
+            
+            # Set bounds on all property locations
+            for loc_name, prop_block in property_locations:
+                try:
+                    # Tighten concentration upper bound (10x feed for concentrate side)
+                    if hasattr(prop_block, 'conc_mass_phase_comp'):
+                        upper_bound = max(10 * conc_feed_kg_m3, 1e-3)
+                        prop_block.conc_mass_phase_comp[0, 'Liq', comp].setub(upper_bound)
+                        
+                        # Set minimum concentration floor for very trace components to prevent underflow
+                        if conc_feed_mg_l < 1.0:  # Very trace component
+                            prop_block.conc_mass_phase_comp[0, 'Liq', comp].setlb(1e-10)
+                    
+                    # Tighten mass fraction upper bound
+                    if hasattr(prop_block, 'mass_frac_phase_comp'):
+                        upper_bound = min(10 * mass_frac_feed, 0.1)
+                        prop_block.mass_frac_phase_comp[0, 'Liq', comp].setub(upper_bound)
+                        
+                        # Set minimum mass fraction floor for trace components
+                        if conc_feed_mg_l < 1.0:
+                            prop_block.mass_frac_phase_comp[0, 'Liq', comp].setlb(1e-12)
+                            
+                except Exception as e:
+                    logger.debug(f"Stage {i}: Could not set bounds for {comp} at {loc_name}: {e}")
+        
+        logger.info(f"Stage {i}: Concentration bounds tightened based on feed composition")
     
     # Set fresh feed conditions (always based on fresh feed, not effective)
     feed_state = m.fs.fresh_feed.outlet
@@ -271,6 +395,11 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     # Component flows based on ion composition (mass basis)
     ion_composition_mg_l = mcas_config['ion_composition_mg_l']
     total_ion_flow_kg_s = 0
+    
+    # Calculate realistic solution density based on TDS and temperature
+    total_tds_mg_l = sum(ion_composition_mg_l.values())
+    solution_density_kg_m3 = estimate_solution_density(total_tds_mg_l, feed_temperature_c)
+    logger.info(f"Solution density: {solution_density_kg_m3:.1f} kg/m³ (TDS: {total_tds_mg_l:.0f} mg/L)")
     
     # Set ion flows with minimum values to avoid numerical issues
     for comp in mcas_config['solute_list']:
@@ -285,8 +414,17 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
         feed_state.flow_mass_phase_comp[0, 'Liq', comp].fix(ion_flow_kg_s)
         total_ion_flow_kg_s += ion_flow_kg_s
     
-    # Water flow
-    water_flow_kg_s = fresh_feed_flow_m3_s * 1000 - total_ion_flow_kg_s  # ~1000 kg/m³
+    # Water flow using realistic density
+    water_flow_kg_s = fresh_feed_flow_m3_s * solution_density_kg_m3 - total_ion_flow_kg_s
+    
+    # Sanity check for water flow
+    if water_flow_kg_s <= 0:
+        raise ValueError(
+            f"Calculated negative water flow ({water_flow_kg_s:.2e} kg/s). "
+            f"Total ion flow ({total_ion_flow_kg_s:.2e} kg/s) exceeds total mass flow "
+            f"({fresh_feed_flow_m3_s * solution_density_kg_m3:.2e} kg/s)"
+        )
+    
     feed_state.flow_mass_phase_comp[0, 'Liq', 'H2O'].fix(water_flow_kg_s)
     
     # Fix temperature and pressure on fresh_feed
@@ -337,8 +475,10 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     # Water gets scaling factor of 1 (it's ~1 kg/s scale)
     m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1, index=("Liq", "H2O"))
     
-    # Calculate expected flow rates for scaling
-    water_flow_kg_s = fresh_feed_flow_m3_s * 1000  # ~1000 kg/m³
+    # Set scaling for water concentration (density-based)
+    m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1.0/solution_density_kg_m3, index=("Liq", "H2O"))
+    # Water mass fraction is close to 1
+    m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1.0, index=("Liq", "H2O"))
     
     for comp in mcas_config['solute_list']:
         conc_mg_l = ion_composition_mg_l.get(comp, 0)
@@ -347,24 +487,42 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
             # Calculate expected flow rate in kg/s
             expected_flow_kg_s = conc_mg_l * fresh_feed_flow_m3_s / 1000  # mg/L * m³/s / 1000 = kg/s
             
+            # Calculate expected concentration in kg/m³
+            conc_kg_m3 = conc_mg_l * 1e-3  # mg/L to kg/m³
+            
+            # Calculate expected mass fraction
+            mass_frac = conc_kg_m3 / solution_density_kg_m3
+            
             # Scaling factor should be inverse of expected magnitude
             # Goal: bring scaled value to range 0.01-100
             if expected_flow_kg_s > 0:
-                # Choose scaling to bring value to ~1
-                scale_factor = 1.0 / expected_flow_kg_s
+                # Flow mass scaling
+                flow_scale_factor = 1.0 / expected_flow_kg_s
+                flow_scale_factor = max(1e-2, min(1e8, flow_scale_factor))
+                m.fs.properties.set_default_scaling("flow_mass_phase_comp", flow_scale_factor, index=("Liq", comp))
                 
-                # Limit scaling factors to reasonable range
-                scale_factor = max(1e-2, min(1e8, scale_factor))
+                # Concentration scaling - critical for FBBT
+                conc_scale_factor = 1.0 / max(conc_kg_m3, 1e-9)
+                conc_scale_factor = max(1e-2, min(1e8, conc_scale_factor))
+                m.fs.properties.set_default_scaling("conc_mass_phase_comp", conc_scale_factor, index=("Liq", comp))
                 
-                m.fs.properties.set_default_scaling("flow_mass_phase_comp", scale_factor, index=("Liq", comp))
-                logger.info(f"Set scaling factor {scale_factor:.2e} for {comp} "
-                          f"(conc: {conc_mg_l} mg/L, expected flow: {expected_flow_kg_s:.2e} kg/s)")
+                # Mass fraction scaling
+                frac_scale_factor = 1.0 / max(mass_frac, 1e-12)
+                frac_scale_factor = max(1e-2, min(1e8, frac_scale_factor))
+                m.fs.properties.set_default_scaling("mass_frac_phase_comp", frac_scale_factor, index=("Liq", comp))
+                
+                logger.info(f"Scaling for {comp}: flow={flow_scale_factor:.2e}, conc={conc_scale_factor:.2e}, frac={frac_scale_factor:.2e} "
+                          f"(conc: {conc_mg_l} mg/L, flow: {expected_flow_kg_s:.2e} kg/s)")
             else:
                 # Default for very small concentrations
                 m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e6, index=("Liq", comp))
+                m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1e6, index=("Liq", comp))
+                m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1e6, index=("Liq", comp))
         else:
             # Default for zero concentration
             m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e4, index=("Liq", comp))
+            m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1e4, index=("Liq", comp))
+            m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1e4, index=("Liq", comp))
     
     # Also set scaling for other important variables
     # Pressure scaling (expecting ~50 bar = 5e6 Pa)

@@ -18,8 +18,15 @@
       "Bash(python3:*)",
       "Bash(python:*)",
       "Bash(jq:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "mcp__ro-design-mcp__optimize_ro_configuration",
+      "mcp__ro-design-mcp__simulate_ro_system",
+      "mcp__codex__codex"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "ro-design-mcp"
+  ]
 }
