@@ -531,8 +531,9 @@ def build_ro_model_mcas(config_data, mcas_config, feed_salinity_ppm,
     # Temperature scaling (expecting ~300 K)
     m.fs.properties.set_default_scaling("temperature", 1e-2)
     
-    # Apply all scaling factors
-    calculate_scaling_factors(m)
+    # NOTE: Scaling factors are now calculated in ro_solver.py after pump initialization
+    # This ensures positive Net Driving Pressure (NDP) before FBBT runs
+    # calculate_scaling_factors(m)  # Moved to solver to fix FBBT errors
     
     # Add WaterTAP costing if enabled
     if config_data.get('include_costing', True):

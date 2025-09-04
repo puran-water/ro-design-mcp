@@ -92,7 +92,7 @@ def run_ro_simulation(
     membrane_properties: Optional[Dict[str, float]] = None,
     optimize_pumps: bool = True,
     initialization_strategy: str = "sequential",
-    use_nacl_equivalent: bool = True  # New parameter for simplified approach
+    use_nacl_equivalent: bool = False  # Changed default: try direct MCAS first
 ) -> Dict[str, Any]:
     """
     Run WaterTAP simulation for RO system configuration.

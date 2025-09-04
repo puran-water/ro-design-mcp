@@ -5,6 +5,48 @@ All notable changes to the RO Design MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-09-04
+
+### Added
+- Full multi-ion tracking for all 12+ species modeled by MCAS
+- Physical constraint bounds to prevent unrealistic solutions:
+  - Pump pressure limits: 10-83 bar
+  - Water flux bounds: 1e-6 to 3e-2 kg/m²/s  
+  - Solute flux bounds: 0 to 1e-3 kg/m²/s
+  - Concentration limits: up to 100 g/L
+- Ion-specific rejection reporting for all modeled species
+- Comprehensive technical documentation
+
+### Fixed
+- Concentrate recycle systems producing physically impossible results (452 bar, 99.95% recovery)
+- Results extractor now reports all ions from `model.fs.properties.solute_set`
+- NaCl equivalent override removed from server.py and CLI
+
+### Changed
+- Default behavior: `use_nacl_equivalent=False` for direct MCAS modeling
+- Results extractor enhanced to iterate over all solutes dynamically
+- Recovery matching accuracy improved to ±2%
+
+### Technical Implementation
+- Modified `utils/ro_model_builder_v2.py`: Added comprehensive physical bounds
+- Modified `utils/ro_results_extractor_v2.py`: Dynamic ion extraction from solute_set
+- Modified `server.py`: Removed hardcoded NaCl equivalent overrides
+- Modified `utils/simulate_ro_cli.py`: Changed default to MCAS direct modeling
+
+## [2.0.0] - 2025-09-03
+
+### Added
+- V2 API with WaterTAPCostingDetailed framework
+- Enhanced economic modeling with transparent CAPEX/OPEX breakdown
+- Chemical consumption tracking (antiscalant, CIP chemicals)
+- Ancillary equipment costing (cartridge filters, CIP systems, ERD)
+- Support for optimization mode (model handle generation)
+
+### Changed
+- Migrated from WaterTAPCosting to WaterTAPCostingDetailed
+- Enhanced economic parameter configuration
+- Improved granularity of cost reporting
+
 ## [1.2.0] - 2025-09-03
 
 ### Added

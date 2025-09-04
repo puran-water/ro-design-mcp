@@ -80,10 +80,18 @@ def optimize_vessel_array_configuration(
         # Calculate flux limits from tolerance
         flux_lower_limit = 1.0 - normalized_flux_tolerance
         flux_upper_limit = 1.0 + normalized_flux_tolerance
+    elif stage_flux_targets_lmh is not None:
+        # Legacy parameter was provided - use it as-is
+        # Ensure it's a list
+        if not isinstance(stage_flux_targets_lmh, list):
+            stage_flux_targets_lmh = [stage_flux_targets_lmh] * max_stages
+        # Use default flux tolerance
+        flux_tolerance = DEFAULT_FLUX_TOLERANCE
+        flux_lower_limit = 1.0 - flux_tolerance
+        flux_upper_limit = 1.0 + flux_tolerance
     else:
-        # Use legacy parameters or defaults
-        if stage_flux_targets_lmh is None:
-            stage_flux_targets_lmh = [18, 15, 12]
+        # Neither new nor legacy parameters provided - use defaults
+        stage_flux_targets_lmh = [18, 15, 12]
         # Use default flux tolerance
         flux_tolerance = DEFAULT_FLUX_TOLERANCE
         flux_lower_limit = 1.0 - flux_tolerance  # e.g., 0.9 for 10% tolerance

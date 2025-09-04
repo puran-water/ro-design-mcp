@@ -217,6 +217,58 @@ def fast_mass_balance_mixer(m, config_data):
     logger.info("Mixer mass balance completed in <1 second")
 
 
+def initialize_erd_if_present(m, n_stages):
+    """
+    Initialize ERD if present in flowsheet, otherwise use standard arc.
+    
+    Args:
+        m: Pyomo model
+        n_stages: Number of RO stages
+    """
+    from pyomo.environ import value
+    from pyomo.environ import units as pyunits
+    
+    if not hasattr(m.fs, "erd"):
+        # No ERD; use the standard arc
+        propagate_state(arc=m.fs.final_conc_to_split)
+        return
+    
+    logger.info("Initializing Energy Recovery Device...")
+    
+    # Brine side from last RO stage
+    propagate_state(arc=m.fs.last_stage_to_erd)
+    
+    # Build feed side: equal flow, lower pressure than brine
+    br_in = m.fs.erd.brine_inlet
+    feed_src = m.fs.erd_feed_source.outlet
+    
+    # Copy mass flows to ensure volumetric equality (MCAS is mass-basis)
+    for comp in m.fs.properties.component_list:
+        feed_src.flow_mass_phase_comp[0, 'Liq', comp].set_value(
+            value(br_in.flow_mass_phase_comp[0, 'Liq', comp])
+        )
+    
+    # Low pressure and sensible temperature
+    feed_src.pressure[0].set_value(pyunits.convert(1*pyunits.atm, to_units=pyunits.Pa))
+    feed_src.temperature[0].set_value(value(m.fs.fresh_feed.outlet.temperature[0]))
+    
+    # Initialize feed source
+    m.fs.erd_feed_source.initialize(outlvl=idaeslog.NOTSET)
+    
+    # Push feed state into ERD
+    propagate_state(arc=m.fs.erd_feed_to_erd)
+    
+    # Initialize ERD
+    m.fs.erd.initialize(outlvl=idaeslog.NOTSET)
+    
+    # Propagate ERD outlets forward
+    propagate_state(arc=m.fs.erd_to_split)
+    propagate_state(arc=m.fs.erd_out_to_product)
+    m.fs.erd_product.initialize(outlvl=idaeslog.NOTSET)
+    
+    logger.info("ERD initialization complete")
+
+
 def refine_recycle_composition(m, config_data, iteration=1):
     """
     Optional: Refine mixer outlet based on actual concentrate composition.
@@ -566,7 +618,7 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
         if has_recycle:
             # Initialize recycle splitter and disposal
             final_stage = n_stages
-            propagate_state(arc=m.fs.final_conc_to_split)
+            initialize_erd_if_present(m, n_stages)
             m.fs.recycle_split.initialize(outlvl=idaeslog.NOTSET)
             
             propagate_state(arc=m.fs.split_to_disposal)
@@ -587,11 +639,19 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
         else:
             # Initialize disposal product for non-recycle case (unified architecture)
             final_stage = n_stages
-            propagate_state(arc=m.fs.final_conc_to_split)
+            initialize_erd_if_present(m, n_stages)
             m.fs.recycle_split.initialize(outlvl=idaeslog.NOTSET)
             
             propagate_state(arc=m.fs.split_to_disposal)
             m.fs.disposal_product.initialize(outlvl=idaeslog.NOTSET)
+        
+        # Apply scaling factors NOW after pumps are initialized with proper pressures
+        # This ensures positive Net Driving Pressure (NDP) before FBBT runs
+        logger.info("\n=== Applying Scaling Factors ===")
+        logger.info("Calculating scaling factors with initialized pump pressures...")
+        from idaes.core.util.scaling import calculate_scaling_factors
+        calculate_scaling_factors(m)
+        logger.info("Scaling factors applied successfully")
         
         # Check initial solution
         logger.info("\n=== Checking Initial Solution ===")

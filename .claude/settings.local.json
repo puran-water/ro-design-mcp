@@ -34,7 +34,10 @@
       "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
       "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
       "Read(/home/hvksh/.cache/claude-cli-nodejs/-mnt-c-Users-hvksh-mcp-servers-ro-design-mcp/mcp-logs-ro-design-mcp/**)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "mcp__ro-design-mcp__simulate_ro_system_v2",
+      "mcp__ro-design-mcp__get_ro_defaults"
     ],
     "deny": []
   },

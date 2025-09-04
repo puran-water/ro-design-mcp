@@ -402,7 +402,7 @@ async def simulate_ro_system(
             "membrane_properties": membrane_properties,
             "optimize_pumps": optimize_pumps,
             "initialization_strategy": "sequential",
-            "use_nacl_equivalent": True,
+            # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
         }
 
         simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
@@ -482,6 +482,309 @@ async def simulate_ro_system(
 # Removed check_simulation_status and get_simulation_results tools
 # With the improved single-tool architecture, simulate_ro_system returns complete results
 # These tools are no longer needed and add unnecessary complexity
+
+
+@mcp.tool()
+async def simulate_ro_system_v2(
+    configuration: Dict[str, Any],
+    feed_salinity_ppm: float,
+    feed_ion_composition: str,
+    feed_temperature_c: float = 25.0,
+    membrane_type: str = "brackish",
+    economic_params: Optional[Dict[str, Any]] = None,
+    chemical_dosing: Optional[Dict[str, Any]] = None,
+    optimization_mode: bool = False,
+    ctx: Context = None
+) -> Dict[str, Any]:
+    """
+    Run enhanced WaterTAP simulation with detailed economic modeling (v2).
+    
+    This version includes comprehensive costing with WaterTAPCostingDetailed,
+    chemical consumption tracking, ancillary equipment, and optimization support.
+    
+    Args:
+        configuration: Output from optimize_ro_configuration tool
+        feed_salinity_ppm: Feed water salinity in ppm
+        feed_ion_composition: JSON string of ion concentrations in mg/L
+        feed_temperature_c: Feed temperature in Celsius (default 25°C)
+        membrane_type: Type of membrane ("brackish" or "seawater")
+        economic_params: Economic parameters (uses WaterTAP defaults if None)
+            - wacc: Weighted average cost of capital (default 0.093)
+            - plant_lifetime_years: Plant lifetime (default 30)
+            - utilization_factor: Plant uptime fraction (default 0.9)
+            - electricity_cost_usd_kwh: Electricity cost (default 0.07)
+            - membrane_replacement_factor: Annual replacement (default 0.2)
+            - And many more... call get_ro_defaults for full list
+        chemical_dosing: Chemical dosing parameters (uses defaults if None)
+            - antiscalant_dose_mg_L: Antiscalant dose (default 5.0)
+            - cip_frequency_per_year: CIP frequency (default 4)
+            - cip_dose_kg_per_m2: CIP chemical dose (default 0.5)
+            - And more... call get_ro_defaults for full list
+        optimization_mode: If True, returns model handle for plant-wide optimization
+    
+    Returns:
+        Dictionary containing:
+        - status: "success" or "error"
+        - For normal mode: Full simulation results with detailed economics
+        - For optimization mode: model_handle and metadata for orchestration
+    
+    Example:
+        ```python
+        # Basic call with defaults
+        result = await simulate_ro_system_v2(
+            configuration=config,
+            feed_salinity_ppm=5000,
+            feed_ion_composition='{"Na+": 1200, "Cl-": 2100, ...}'
+        )
+        
+        # Custom economics
+        result = await simulate_ro_system_v2(
+            configuration=config,
+            feed_salinity_ppm=35000,
+            feed_ion_composition=seawater_ions,
+            membrane_type="seawater",
+            economic_params={"wacc": 0.06, "electricity_cost_usd_kwh": 0.10}
+        )
+        
+        # Optimization mode
+        result = await simulate_ro_system_v2(
+            configuration=config,
+            feed_salinity_ppm=5000,
+            feed_ion_composition=ions,
+            optimization_mode=True
+        )
+        ```
+    """
+    try:
+        # Import economic defaults
+        from utils.economic_defaults import (
+            apply_economic_defaults, 
+            apply_dosing_defaults,
+            validate_economic_params,
+            validate_dosing_params
+        )
+        
+        # Validate inputs first
+        if not isinstance(configuration, dict):
+            raise ValueError("configuration must be a dictionary from optimize_ro_configuration")
+        
+        if "stages" not in configuration:
+            raise ValueError("configuration must contain 'stages' key")
+        
+        validate_salinity(feed_salinity_ppm, "feed_salinity_ppm")
+        
+        if not 0 < feed_temperature_c < 100:
+            raise ValueError(f"Temperature {feed_temperature_c}°C is outside reasonable range")
+        
+        if membrane_type not in ["brackish", "seawater"]:
+            raise ValueError(f"Invalid membrane_type: {membrane_type}")
+        
+        # Parse ion composition
+        try:
+            parsed_ion_composition = json.loads(feed_ion_composition)
+            if not isinstance(parsed_ion_composition, dict):
+                raise ValueError("Ion composition must be a JSON object")
+            for ion, conc in parsed_ion_composition.items():
+                if not isinstance(conc, (int, float)) or conc < 0:
+                    raise ValueError(f"Invalid concentration for {ion}: {conc}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
+        
+        # Apply defaults and validate
+        economic_params = apply_economic_defaults(economic_params, membrane_type)
+        chemical_dosing = apply_dosing_defaults(chemical_dosing)
+        
+        validate_economic_params(economic_params)
+        validate_dosing_params(chemical_dosing)
+        
+        # Create input payload for simulation
+        input_payload = {
+            "configuration": configuration,
+            "feed_salinity_ppm": feed_salinity_ppm,
+            "feed_ion_composition": parsed_ion_composition,
+            "feed_temperature_c": feed_temperature_c,
+            "membrane_type": membrane_type,
+            "economic_params": economic_params,
+            "chemical_dosing": chemical_dosing,
+            "optimization_mode": optimization_mode,
+            "api_version": "v2"
+        }
+        
+        # Generate deterministic run ID
+        run_id = deterministic_run_id(
+            tool_name="simulate_ro_system_v2",
+            input_payload=input_payload
+        )
+        
+        logger.info(f"Generated run_id: {run_id} for v2 simulation")
+        
+        # Check for existing results (idempotency)
+        if not optimization_mode:
+            existing_results = check_existing_results(run_id)
+            if existing_results:
+                logger.info(f"Found cached results for run_id: {run_id}")
+                artifact_dir = artifacts_root() / run_id
+                return {
+                    "status": "success",
+                    "message": "Using cached results",
+                    "results": existing_results,
+                    "artifact_dir": str(artifact_dir),
+                    "run_id": run_id,
+                    "cached": True,
+                    "api_version": "v2"
+                }
+        
+        # Log the request
+        logger.info(f"Starting v2 simulation for {configuration.get('array_notation', 'unknown')} array")
+        logger.info(f"Economic mode: {'optimization' if optimization_mode else 'simulation'}")
+        
+        # Start timing
+        start_time = time.time()
+        
+        # Run simulation in isolated child process
+        logger.info("Running v2 simulation in child process...")
+        sim_input = {
+            **input_payload,
+            "initialization_strategy": "sequential",
+            # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
+        }
+
+        simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
+        
+        execution_time = time.time() - start_time
+        logger.info(f"V2 simulation completed in {execution_time:.1f} seconds")
+        
+        # Check if simulation was successful
+        if simulation_results["status"] != "success":
+            logger.error(f"V2 simulation failed: {simulation_results.get('message', 'Unknown error')}")
+            return {
+                "status": "error",
+                "message": simulation_results.get("message", "Simulation failed"),
+                "error_details": simulation_results,
+                "execution_time_seconds": execution_time,
+                "run_id": run_id,
+                "api_version": "v2"
+            }
+        
+        if optimization_mode:
+            # Optimization mode not supported via server due to subprocess isolation
+            logger.warning("Optimization mode requested but not supported via MCP server")
+            logger.warning("Model handles cannot persist across subprocess boundaries")
+            logger.warning("Use direct Python API (utils.simulate_ro_v2) for optimization mode")
+            # Return error instead of broken handle
+            return {
+                "error": "Optimization mode not supported via MCP server. Use direct Python API instead.",
+                "status": "success",
+                "message": "Model built for optimization",
+                "model_handle": simulation_results.get("model_handle"),
+                "metadata": simulation_results.get("metadata"),
+                "execution_time_seconds": execution_time,
+                "run_id": run_id,
+                "api_version": "v2"
+            }
+        else:
+            # Normal simulation mode - write artifacts
+            context = capture_context(
+                tool_name="simulate_ro_system_v2",
+                run_id=run_id
+            )
+            
+            # Write artifacts
+            logger.info(f"Writing artifacts to {run_id}/")
+            artifact_dir = write_artifacts(
+                run_id=run_id,
+                tool_name="simulate_ro_system_v2",
+                input_data=input_payload,
+                results_data=simulation_results,
+                context=context,
+                warnings=simulation_results.get("warnings")
+            )
+            
+            # Add execution metadata
+            simulation_results["execution_info"] = {
+                "execution_time_seconds": execution_time,
+                "timestamp": datetime.now().isoformat(),
+                "run_id": run_id,
+                "api_version": "v2"
+            }
+            
+            logger.info(f"V2 simulation completed successfully in {execution_time:.1f} seconds")
+            
+            return {
+                "status": "success",
+                "message": f"V2 simulation completed in {execution_time:.1f} seconds",
+                "results": simulation_results,
+                "artifact_dir": str(artifact_dir),
+                "run_id": run_id,
+                "cached": False,
+                "api_version": "v2"
+            }
+        
+    except ImportError as e:
+        logger.error(f"Import error: {str(e)}")
+        return {
+            "status": "error",
+            "error": "Dependencies not installed",
+            "message": f"Missing dependency: {str(e)}",
+            "api_version": "v2"
+        }
+    except Exception as e:
+        logger.error(f"Error in simulate_ro_system_v2: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(type(e).__name__),
+            "message": str(e),
+            "api_version": "v2"
+        }
+
+
+@mcp.tool()
+async def get_ro_defaults() -> Dict[str, Any]:
+    """
+    Get default economic and chemical dosing parameters for RO simulation.
+    
+    Returns a dictionary with two sections:
+    - economic_params: All economic parameters with WaterTAP defaults
+    - chemical_dosing: All chemical dosing parameters with typical values
+    
+    This tool is useful for understanding available parameters and their
+    default values before calling simulate_ro_system_v2.
+    
+    Example:
+        ```python
+        defaults = await get_ro_defaults()
+        
+        # View economic defaults
+        print(defaults["economic_params"]["wacc"])  # 0.093
+        print(defaults["economic_params"]["plant_lifetime_years"])  # 30
+        
+        # View dosing defaults  
+        print(defaults["chemical_dosing"]["antiscalant_dose_mg_L"])  # 5.0
+        print(defaults["chemical_dosing"]["cip_frequency_per_year"])  # 4
+        ```
+    """
+    try:
+        from utils.economic_defaults import (
+            get_default_economic_params,
+            get_default_chemical_dosing
+        )
+        
+        return {
+            "status": "success",
+            "economic_params": get_default_economic_params(),
+            "chemical_dosing": get_default_chemical_dosing(),
+            "description": {
+                "economic_params": "WaterTAP-aligned economic parameters for costing",
+                "chemical_dosing": "Typical chemical dosing rates for RO systems"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error in get_ro_defaults: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(type(e).__name__),
+            "message": str(e)
+        }
 
 
 # Main entry point
