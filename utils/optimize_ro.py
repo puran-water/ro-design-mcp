@@ -111,6 +111,137 @@ def optimize_vessel_array_configuration(
     # FIXED: Tighter convergence tolerance for recycle optimization
     CONVERGENCE_TOLERANCE = 0.01  # 0.01 m³/h instead of 0.5
     
+    # Performance optimization: Cache for vessel evaluations
+    vessel_eval_cache = {}
+    
+    # Pre-validation for large configurations
+    def validate_configuration_scale(feed_flow, min_conc_flows):
+        """
+        Pre-validate if configuration will require optimized search.
+        Returns warnings and recommended approach.
+        """
+        max_possible_vessels = []
+        for stage_idx, min_conc in enumerate(min_conc_flows):
+            max_vessels = int(feed_flow / min_conc)
+            max_possible_vessels.append(max_vessels)
+            if max_vessels > 500:
+                logger.warning(f"Stage {stage_idx+1} could require up to {max_vessels} vessels - using optimized search")
+            elif max_vessels > 100:
+                logger.info(f"Stage {stage_idx+1} may require {max_vessels} vessels - using geometric search")
+        
+        total_max = sum(max_possible_vessels)
+        if total_max > 1000:
+            logger.warning(f"Configuration could require {total_max} total vessels across all stages")
+            logger.info("Using highly optimized search strategies to prevent timeout")
+            return 'ultra_optimized'
+        elif total_max > 200:
+            logger.info(f"Configuration may require up to {total_max} vessels - using optimized search")
+            return 'optimized'
+        else:
+            return 'standard'
+    
+    # Validate scale at start
+    search_mode = validate_configuration_scale(feed_flow_m3h, min_concentrate_flow_per_vessel_m3h[:max_stages])
+    
+    def binary_search_vessels(feed_flow, flux_target, min_conc_flow, target_recovery, tolerance):
+        """
+        Binary search for optimal vessel count - efficient for single stage.
+        Returns best configuration that meets or exceeds target recovery.
+        """
+        max_vessels = int(feed_flow / min_conc_flow)
+        
+        # Quick bounds check
+        if max_vessels <= 0:
+            return None
+            
+        # For small vessel counts, use original approach
+        if max_vessels <= 50:
+            return None  # Signal to use original method
+        
+        left, right = 1, max_vessels
+        best_config = None
+        
+        while left <= right:
+            mid = (left + right) // 2
+            config = evaluate_vessel_count_max_recovery(mid, feed_flow, flux_target, min_conc_flow)
+            
+            if config is None:
+                # Can't achieve any recovery with this vessel count
+                left = mid + 1
+                continue
+            
+            recovery = config['recovery']
+            
+            if abs(recovery - target_recovery) <= tolerance:
+                # Found exact match
+                return config
+            elif recovery < target_recovery:
+                # Need more vessels for higher recovery
+                left = mid + 1
+            else:
+                # Recovery exceeds target, try fewer vessels
+                best_config = config  # Save as potential solution
+                right = mid - 1
+        
+        return best_config
+    
+    def geometric_search_vessels(feed_flow, flux_target, min_conc_flow, search_down=True):
+        """
+        Geometric progression search for large vessel counts.
+        Starts with powers of 2, then refines the best region.
+        """
+        max_vessels = int(feed_flow / min_conc_flow)
+        
+        if max_vessels <= 100:
+            return None  # Use original method for small counts
+        
+        # Phase 1: Coarse search with geometric progression
+        best_config = None
+        best_recovery = 0
+        promising_range = None
+        
+        # Determine step size based on scale
+        if max_vessels > 1000:
+            initial_steps = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+        elif max_vessels > 500:
+            initial_steps = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+        else:
+            initial_steps = [1, 2, 4, 8, 16, 32, 64]
+        
+        # Extend steps to cover full range
+        while initial_steps[-1] < max_vessels:
+            initial_steps.append(min(initial_steps[-1] * 2, max_vessels))
+        
+        # Test geometric points
+        for n_vessels in initial_steps:
+            if n_vessels > max_vessels:
+                break
+            
+            config = evaluate_vessel_count_max_recovery(n_vessels, feed_flow, flux_target, min_conc_flow)
+            if config and config['recovery'] > best_recovery:
+                best_config = config
+                best_recovery = config['recovery']
+                # Remember promising range for refinement
+                idx = initial_steps.index(n_vessels)
+                if idx > 0:
+                    promising_range = (initial_steps[idx-1], min(initial_steps[idx+1] if idx+1 < len(initial_steps) else n_vessels*2, max_vessels))
+                else:
+                    promising_range = (1, min(initial_steps[1] if len(initial_steps) > 1 else n_vessels*2, max_vessels))
+        
+        # Phase 2: Refine in promising range if found
+        if promising_range and best_config:
+            range_size = promising_range[1] - promising_range[0]
+            if range_size > 10:
+                # Test a few more points in the promising range
+                refinement_points = np.linspace(promising_range[0], promising_range[1], min(10, range_size), dtype=int)
+                for n_vessels in refinement_points:
+                    config = evaluate_vessel_count_max_recovery(n_vessels, feed_flow, flux_target, min_conc_flow)
+                    if config and config['recovery'] > best_recovery:
+                        best_config = config
+                        best_recovery = config['recovery']
+        
+        return best_config
+    
     def evaluate_vessel_count_at_flux(n_vessels, feed_flow, flux, min_conc_flow):
         """
         Evaluate a specific vessel count at a specific flux.
@@ -326,31 +457,45 @@ def optimize_vessel_array_configuration(
                 
                 # For single stage trying to meet a specific recovery, also try lower vessel counts
                 if n_stages == 1 and stage_idx == 0:
-                    # Try to find configuration that meets target exactly
-                    for n_vessels in range(1, max_vessels + 1):
-                        config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
-                        
-                        if config is not None:
-                            stage_recovery = config['recovery']
-                            # For single stage, we want recovery close to target
-                            if stage_recovery >= target_recovery and stage_recovery <= target_recovery + tolerance:
-                                best_stage_config = config
-                                best_stage_recovery = stage_recovery
-                                break
-                            elif stage_recovery > best_stage_recovery and stage_recovery < target_recovery:
-                                # Keep best option below target
-                                best_stage_recovery = stage_recovery
-                                best_stage_config = config
+                    # Use intelligent search for large vessel counts
+                    if max_vessels > 100:
+                        logger.info(f"  Using binary search for {max_vessels} potential vessels...")
+                        best_stage_config = binary_search_vessels(current_feed, flux_target, min_conc, target_recovery, tolerance)
+                        if best_stage_config:
+                            best_stage_recovery = best_stage_config['recovery']
+                    else:
+                        # Original approach for small vessel counts
+                        for n_vessels in range(1, max_vessels + 1):
+                            config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
+                            
+                            if config is not None:
+                                stage_recovery = config['recovery']
+                                # For single stage, we want recovery close to target
+                                if stage_recovery >= target_recovery and stage_recovery <= target_recovery + tolerance:
+                                    best_stage_config = config
+                                    best_stage_recovery = stage_recovery
+                                    break
+                                elif stage_recovery > best_stage_recovery and stage_recovery < target_recovery:
+                                    # Keep best option below target
+                                    best_stage_recovery = stage_recovery
+                                    best_stage_config = config
                 else:
                     # For multi-stage, maximize recovery per stage
-                    for n_vessels in range(max_vessels, 0, -1):
-                        config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
-                        
-                        if config is not None:
-                            # Select configuration with highest recovery
-                            if config['recovery'] > best_stage_recovery:
-                                best_stage_recovery = config['recovery']
-                                best_stage_config = config
+                    if max_vessels > 100:
+                        logger.info(f"  Stage {stage_idx+1}: Using geometric search for {max_vessels} potential vessels...")
+                        best_stage_config = geometric_search_vessels(current_feed, flux_target, min_conc)
+                        if best_stage_config:
+                            best_stage_recovery = best_stage_config['recovery']
+                    else:
+                        # Original approach for small vessel counts
+                        for n_vessels in range(max_vessels, 0, -1):
+                            config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
+                            
+                            if config is not None:
+                                # Select configuration with highest recovery
+                                if config['recovery'] > best_stage_recovery:
+                                    best_stage_recovery = config['recovery']
+                                    best_stage_config = config
                 
                 if best_stage_config is None:
                     logger.debug(f"  Stage {stage_idx+1}: No valid configuration found")
@@ -580,12 +725,19 @@ def optimize_vessel_array_configuration(
                 best_stage_config = None
                 best_stage_recovery = 0
                 
-                for n_vessels in range(max_vessels, 0, -1):
-                    config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
-                    
-                    if config is not None and config['recovery'] > best_stage_recovery:
-                        best_stage_recovery = config['recovery']
-                        best_stage_config = config
+                # Use intelligent search for large vessel counts
+                if max_vessels > 100:
+                    best_stage_config = geometric_search_vessels(current_feed, flux_target, min_conc)
+                    if best_stage_config:
+                        best_stage_recovery = best_stage_config['recovery']
+                else:
+                    # Original approach for small vessel counts
+                    for n_vessels in range(max_vessels, 0, -1):
+                        config = evaluate_vessel_count_max_recovery(n_vessels, current_feed, flux_target, min_conc)
+                        
+                        if config is not None and config['recovery'] > best_stage_recovery:
+                            best_stage_recovery = config['recovery']
+                            best_stage_config = config
                 
                 if best_stage_config is None:
                     break

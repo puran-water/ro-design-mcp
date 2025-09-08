@@ -168,10 +168,18 @@ Pending implementation:
 ## Performance Characteristics
 
 ### Typical Execution Times
-- Configuration optimization: < 1 second
+- Configuration optimization: 
+  - Small flows (< 500 m³/h): < 1 second
+  - Large flows (1000-10000 m³/h): 2-5 seconds using intelligent search
 - Single-stage simulation: 10-15 seconds
 - Multi-stage simulation: 15-50 seconds
 - Complex ion chemistry: Additional 5-10 seconds
+
+### Configuration Tool Improvements (v1.1)
+- **Intelligent Search Strategies**: Binary search for single-stage, geometric progression for multi-stage
+- **Scale-Aware Optimization**: Automatically detects and handles large vessel counts (>100)
+- **Performance**: Handles flows up to 10,000+ m³/h without hanging
+- **Pre-validation**: Warns when configurations may require >500 vessels per stage
 
 ### Recovery Accuracy
 - Configuration to simulation matching: ±2%

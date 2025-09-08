@@ -5,6 +5,30 @@ All notable changes to the RO Design MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-09-08
+
+### Added
+- **Intelligent search strategies** for configuration optimization:
+  - Binary search for single-stage configurations with >100 vessels
+  - Geometric progression search for multi-stage configurations
+  - Pre-validation to detect and warn about large vessel counts
+- **Scale-aware optimization** that automatically adapts to flow magnitude
+- Support for extremely large flows (up to 10,000+ m³/h) without hanging
+
+### Fixed
+- Configuration tool hanging on large flows (>1000 m³/h)
+- Performance issues when vessel count exceeds 500 per stage
+- Timeout issues with brute-force vessel iteration
+
+### Changed
+- Configuration search algorithm from O(n) to O(log n) for large vessel counts
+- Added adaptive thresholds: standard (<100 vessels), optimized (100-1000), ultra-optimized (>1000)
+
+### Performance Improvements
+- Large flow (6250 m³/h) configuration: From timeout/hang to <5 seconds
+- Medium flow (1000 m³/h) configuration: From 30+ seconds to <5 seconds
+- Maintains <1 second performance for small flows (<500 m³/h)
+
 ## [2.1.0] - 2025-09-04
 
 ### Added
