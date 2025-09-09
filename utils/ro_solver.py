@@ -40,11 +40,17 @@ from .ro_initialization import (
     calculate_concentrate_tds
 )
 
-
-# Get logger configured for MCP
+# Get logger configured for MCP - MUST be before using logger
 from .logging_config import get_configured_logger
 from .stdout_redirect import redirect_stdout_to_stderr
 logger = get_configured_logger(__name__)
+
+# Import interval_initializer for FBBT robustness
+try:
+    from watertap.core.util.initialization import interval_initializer
+except ImportError:
+    interval_initializer = None
+    logger.warning("interval_initializer not available - FBBT robustness reduced")
 
 
 def deactivate_cp_equations(model, n_stages):
@@ -437,7 +443,12 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 logger.warning(f"Calculated TDS ({feed_tds_ppm:.0f} ppm) differs from expected ({expected_tds:.0f} ppm) by >10%")
         
         # Determine default salt passage for this water type
-        default_salt_passage = 0.015  # Default 1.5% for brackish water
+        # Use lower salt passage for seawater membranes
+        membrane_type = config_data.get('membrane_type', getattr(m, 'membrane_type', 'brackish'))
+        if membrane_type == 'seawater' or feed_tds_ppm >= 30000:
+            default_salt_passage = 0.005  # 0.5% typical for SWRO
+        else:
+            default_salt_passage = 0.015  # 1.5% for brackish RO
         
         # Initialize stages with elegant initialization
         logger.info(f"[TIMING {time.time()-start_time:.1f}s] === Initializing RO Stages ===")
@@ -453,6 +464,9 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
             current_tds_ppm = feed_tds_ppm
             logger.info(f"Using feed TDS for Stage 1: {current_tds_ppm:.0f} ppm (no recycle)")
         
+        # Apply scaling factors once after at least the first pump is initialized
+        scaling_applied = False
+
         for i in range(1, n_stages + 1):
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] --- Stage {i} ---")
             
@@ -501,12 +515,14 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 salt_passage=default_salt_passage,  # ALWAYS pass salt_passage
                 membrane_permeability=membrane_permeability,
                 membrane_area=membrane_area,
-                feed_flow=feed_flow
+                feed_flow=feed_flow,
+                stage_number=i  # Pass stage number for stage-aware osmotic pressure
             )
             
-            # Add safety factor
-            safety_factor = 1.1 + 0.1 * (i - 1) + 0.2 * max(0, target_recovery - 0.5)
-            required_pressure = min(required_pressure * safety_factor, 80e5)
+            # No additional safety factor needed - min_driving_pressure already provides buffer
+            # Cap required pressure by membrane class
+            max_bar = 120.0 if membrane_type == 'seawater' else 80.0
+            required_pressure = min(required_pressure, max_bar * 1e5)
             
             # Initialize pump with fixed pressure (with retry on failure)
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting pump{i} initialization")
@@ -540,6 +556,34 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 propagate_state(arc=getattr(m.fs, arc_name_simple))
             else:
                 raise AttributeError(f"Flowsheet missing pump to RO arc for stage {i} (tried {arc_name_stage} and {arc_name_simple})")
+
+            # Ensure scaling factors are applied before any RO initialization/FBBT
+            # This greatly improves FBBT robustness for higher-TDS subsequent stages
+            if not scaling_applied:
+                try:
+                    from idaes.core.util.scaling import calculate_scaling_factors
+                    logger.info(f"[TIMING {time.time()-start_time:.1f}s] Applying scaling factors before RO initialization")
+                    calculate_scaling_factors(m)
+                    scaling_applied = True
+                    logger.info("Scaling factors applied")
+                except Exception as _e:
+                    logger.warning(f"Could not calculate scaling factors prior to RO init: {_e}")
+            
+            # Apply interval_initializer for FBBT robustness before RO initialization
+            # For high-TDS stages or later stages, interval FBBT can over-tighten bounds and hurt convergence.
+            # Use it for Stage 1 (or low-TDS) only; skip for Stage >=2 or high TDS.
+            if interval_initializer is not None:
+                if i == 1 and current_tds_ppm < 10000:
+                    logger.info(f"[TIMING {time.time()-start_time:.1f}s] Applying interval_initializer for stage {i}")
+                    try:
+                        # Apply to RO unit with reasonable tolerances
+                        interval_initializer(ro, feasibility_tol=1e-7, bound_push=1e-7)
+                        logger.info(f"Stage {i}: interval_initializer applied successfully")
+                    except Exception as e:
+                        logger.warning(f"Stage {i}: interval_initializer failed: {e}")
+                        # Continue without it - not critical
+                else:
+                    logger.info(f"Skipping interval_initializer for stage {i} (later stage or high TDS)")
             
             # Touch RO properties to ensure trace components are built
             # Access properties through the actual property blocks
@@ -551,18 +595,10 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                             # Touch the variable to ensure it's built
                             ro.feed_side.properties[t, x].mass_frac_phase_comp
             
-            # Check and clean up any lingering charge_balance constraints from upstream assertions
-            # This prevents negative DOF issues at the RO inlet
+            # Touch inlet-side properties to ensure they're built (helps FBBT)
+            # Do NOT delete MCAS charge_balance constraints; they are required for electroneutrality
             if hasattr(ro.feed_side, 'properties_in'):
                 inlet_prop = ro.feed_side.properties_in[0]
-                
-                # Check for and remove any lingering charge_balance constraint
-                if hasattr(inlet_prop, 'charge_balance'):
-                    logger.warning(f"Stage {i}: Found lingering charge_balance constraint at RO inlet, removing...")
-                    inlet_prop.del_component(inlet_prop.charge_balance)
-                
-                # Touch properties to ensure they're built (helps FBBT)
-                # This doesn't change DOF, just ensures variables exist
                 try:
                     if hasattr(inlet_prop, 'mass_frac_phase_comp'):
                         _ = inlet_prop.mass_frac_phase_comp
@@ -570,20 +606,82 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                         _ = inlet_prop.conc_mass_phase_comp
                 except Exception:
                     pass  # Properties might not be needed
-                
-                # Log DOF to verify we're not over-constrained
-                dof = degrees_of_freedom(inlet_prop)
-                if dof != 0:
-                    logger.warning(f"Stage {i}: RO inlet DOF = {dof} (expected 0)")
-                    if dof < 0:
-                        logger.error(f"Stage {i}: Over-constrained inlet block! Check for extra fixed variables.")
-                else:
-                    logger.info(f"Stage {i}: RO inlet DOF = 0 (correct)")
+                # Log DOF to verify we're not over/under-constrained
+                try:
+                    dof = degrees_of_freedom(inlet_prop)
+                    logger.info(f"Stage {i}: RO inlet DOF = {dof}")
+                except Exception:
+                    pass
             
-            # Initialize RO with elegant approach
+            # Initialize RO with elegant approach, with a fallback relaxation for robustness
             logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting RO{i} initialization")
-            initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
-            logger.info(f"[TIMING {time.time()-start_time:.1f}s] RO{i} initialized")
+            # For high-TDS stages, initialize with CP temporarily deactivated to avoid FBBT conflicts
+            cp_temp_deactivated = False
+            try:
+                if current_tds_ppm >= 10000 and hasattr(ro.feed_side, 'eq_concentration_polarization'):
+                    try:
+                        ro.feed_side.eq_concentration_polarization.deactivate()
+                        cp_temp_deactivated = True
+                        logger.info(f"Stage {i}: Temporarily deactivated CP equations for initialization")
+                    except Exception as _e:
+                        logger.debug(f"Stage {i}: Could not deactivate CP equations: {_e}")
+
+                initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
+                logger.info(f"[TIMING {time.time()-start_time:.1f}s] RO{i} initialized")
+            except Exception as e_init:
+                # If the failure is due to insufficient inlet pressure, parse and bump pump pressure
+                err_msg = str(e_init)
+                if "Inlet pressure" in err_msg and "Need at least" in err_msg:
+                    import re
+                    match = re.search(r"Need at least ([\d.]+) bar", err_msg)
+                    if match:
+                        min_bar = float(match.group(1))
+                        new_pressure = min(80.0, min_bar * 1.25)  # 25% margin, cap at 80 bar
+                        logger.warning(
+                            f"Stage {i}: Increasing pump pressure to {new_pressure:.1f} bar based on RO requirement"
+                        )
+                        # Set new pump pressure and re-propagate
+                        pump.outlet.pressure[0].fix(new_pressure * 1e5)
+                        # Re-propagate into RO
+                        if hasattr(m.fs, arc_name_stage):
+                            propagate_state(arc=getattr(m.fs, arc_name_stage))
+                        elif hasattr(m.fs, arc_name_simple):
+                            propagate_state(arc=getattr(m.fs, arc_name_simple))
+                        # Retry initialization
+                        initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
+                        logger.info(f"[TIMING {time.time()-start_time:.1f}s] RO{i} initialized after pressure bump")
+                        # Proceed
+                    else:
+                        logger.warning(
+                            f"Stage {i}: Could not parse minimum pressure from error; falling back to flux relaxation"
+                        )
+                        # Fall through to flux relaxation below
+                else:
+                    logger.warning(
+                        f"Stage {i}: RO initialize failed: {e_init}. Attempting flux bound relaxation and retry."
+                    )
+                # Relax water flux lower bound and retry once
+                try:
+                    # Make the lower bound fully non-negative for maximum permissiveness
+                    # 0.00 LMH in kg/m^2/s
+                    jw_min_relaxed = 0.0
+                    if hasattr(ro, 'feed_side') and hasattr(ro, 'flux_mass_phase_comp'):
+                        for x in ro.feed_side.length_domain:
+                            # Relax lower bound
+                            ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setlb(jw_min_relaxed)
+                    initialize_ro_unit_elegant(ro, target_recovery, verbose=True)
+                    logger.info(f"[TIMING {time.time()-start_time:.1f}s] RO{i} initialized after flux relaxation")
+                except Exception as e_retry:
+                    logger.error(f"Stage {i}: RO initialize retry failed: {e_retry}")
+                    raise
+            finally:
+                # Reactivate CP equations if we temporarily deactivated them
+                if cp_temp_deactivated:
+                    try:
+                        ro.feed_side.eq_concentration_polarization.activate()
+                        logger.info(f"Stage {i}: Reactivated CP equations after initialization")
+                    except Exception as _e:
+                        logger.debug(f"Stage {i}: Could not reactivate CP equations: {_e}")
             
             # Update TDS for next stage
             current_tds_ppm = calculate_concentrate_tds(
@@ -735,21 +833,47 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True):
                 logger.warning("Initial solution not optimal, but proceeding with pump optimization...")
             
             # Now unfix pumps and add recovery constraints
-            for i in range(1, n_stages + 1):
-                pump = getattr(m.fs, f"pump{i}")
-                ro = getattr(m.fs, f"ro_stage{i}")
-                stage_data = config_data['stages'][i-1]
-                target_recovery = stage_data.get('stage_recovery', 0.5)
-                
-                # Unfix pump pressure
-                pump.outlet.pressure[0].unfix()
-                logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
-                
-                # Add recovery constraint
-                constraint_name = f"recovery_constraint_stage{i}"
-                setattr(m.fs, constraint_name,
-                        Constraint(expr=ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'] == target_recovery))
-                logger.info(f"Stage {i}: Added recovery constraint for {target_recovery:.3f}")
+            membrane_type_cfg = config_data.get('membrane_type', getattr(m, 'membrane_type', 'brackish'))
+            is_seawater_case = (membrane_type_cfg == 'seawater')
+
+            if is_seawater_case:
+                # Unfix all pump pressures
+                for i in range(1, n_stages + 1):
+                    pump = getattr(m.fs, f"pump{i}")
+                    pump.outlet.pressure[0].unfix()
+                    logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
+
+                # Add a single system-level recovery constraint (inequality) to avoid infeasibility
+                system_target = config_data.get('achieved_recovery', 0.45)
+                system_tol = 0.05  # Allow 5% tolerance for seawater systems
+
+                feed_h2o = m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O']
+                total_perm_h2o = sum(
+                    getattr(m.fs, f"ro_stage{i}").mixed_permeate[0].flow_mass_phase_comp['Liq', 'H2O']
+                    for i in range(1, n_stages + 1)
+                )
+
+                setattr(m.fs, 'system_recovery_constraint',
+                        Constraint(expr=total_perm_h2o >= (system_target - system_tol) * feed_h2o))
+                logger.info(f"Added system recovery constraint: >= {(system_target - system_tol):.3f} of feed H2O")
+            else:
+                for i in range(1, n_stages + 1):
+                    pump = getattr(m.fs, f"pump{i}")
+                    ro = getattr(m.fs, f"ro_stage{i}")
+                    stage_data = config_data['stages'][i-1]
+                    target_recovery = stage_data.get('stage_recovery', 0.5)
+
+                    # Unfix pump pressure
+                    pump.outlet.pressure[0].unfix()
+                    logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
+
+                    # Add recovery constraint - use inequality with small tolerance for feasibility
+                    # This prevents over-constraining the system with fixed area + tight flux bounds
+                    constraint_name = f"recovery_constraint_stage{i}"
+                    recovery_tolerance = 0.01  # Allow 1% tolerance
+                    setattr(m.fs, constraint_name,
+                            Constraint(expr=ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'] >= target_recovery - recovery_tolerance))
+                    logger.info(f"Stage {i}: Added recovery constraint for >= {target_recovery - recovery_tolerance:.3f}")
             
             # Check degrees of freedom
             dof = degrees_of_freedom(m)

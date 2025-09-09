@@ -22,6 +22,7 @@ This MCP server provides two primary tools for RO system design:
 - Automatic concentrate recycle calculation for high recovery (up to 95%)
 - Flux balancing across stages with configurable tolerance
 - Minimum concentrate flow constraints per vessel type
+- Intelligent search algorithms for large-scale systems
 
 ### Simulation Engine
 - WaterTAP-based process modeling with MCAS property package
@@ -29,12 +30,19 @@ This MCP server provides two primary tools for RO system design:
 - Stage-wise mass balance and pressure calculations
 - Pump pressure optimization for recovery matching
 - Physical constraint enforcement (pressure, flux, concentration limits)
+- Seawater-specific initialization and constraint handling
 
 ### Economic Analysis
 - WaterTAPCostingDetailed framework integration
 - Component-level CAPEX tracking (pumps, membranes, ERD)
 - Operating cost breakdown (energy, chemicals, maintenance)
 - Levelized cost of water (LCOW) calculation
+
+### Recent Improvements (v2.1)
+- Enhanced seawater simulation with system-level recovery constraints
+- Improved flux bound relaxation for high-TDS feeds
+- Progressive initialization fallback for challenging conditions
+- Optimized solute recovery parameters for MCAS charge balance
 
 ## Installation
 

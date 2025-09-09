@@ -123,7 +123,8 @@ def calculate_required_pressure(
     salt_passage: float = None,
     membrane_permeability: float = None,  # A_comp in m/s/Pa
     membrane_area: float = None,  # Total area in m²
-    feed_flow: float = None  # Feed flow in kg/s
+    feed_flow: float = None,  # Feed flow in kg/s
+    stage_number: int = 1  # Stage number for stage-aware osmotic pressure
 ) -> float:
     """
     Calculate required feed pressure for RO operation.
@@ -136,6 +137,7 @@ def calculate_required_pressure(
         pressure_drop: Pressure drop across membrane in Pa (default 0.5 bar)
         salt_passage: Salt passage fraction (0-1) - REQUIRED parameter
                      See calculate_concentrate_tds for typical values
+        stage_number: Stage number (1, 2, or 3) for stage-aware osmotic pressure calculation
         
     Returns:
         float: Required feed pressure in Pa
@@ -158,10 +160,28 @@ def calculate_required_pressure(
             f"Consider using MCAS property package for accurate osmotic pressure."
         )
     
-    # Calculate average osmotic pressure
+    # Calculate osmotic pressures
     feed_osmotic = calculate_osmotic_pressure(feed_tds_ppm)
     conc_osmotic = calculate_osmotic_pressure(conc_tds_ppm)
-    avg_osmotic = (feed_osmotic + conc_osmotic) / 2
+    
+    # Use reject osmotic pressure (concentrate) for initialization
+    # This is more conservative and helps prevent FBBT failures
+    # as it ensures sufficient pressure at the reject end
+    reject_osmotic = conc_osmotic
+    
+    # Stage-aware osmotic pressure calculation
+    # Stage 1: Use weighted average (feed is dilute, concentrate is high)
+    # Stage 2+: Use full concentrate osmotic (feed is already concentrated)
+    if stage_number == 1:
+        # For Stage 1, use weighted average favoring reject
+        # This accounts for the TDS gradient from dilute feed to concentrated reject
+        avg_osmotic = 0.3 * feed_osmotic + 0.7 * conc_osmotic
+        logger.info(f"Stage 1: Using weighted osmotic pressure (feed: {feed_osmotic/1e5:.1f} bar, conc: {conc_osmotic/1e5:.1f} bar, avg: {avg_osmotic/1e5:.1f} bar)")
+    else:
+        # For Stage 2 and 3, use full concentrate osmotic pressure
+        # The feed is already concentrated, so the osmotic gradient is more uniform
+        avg_osmotic = conc_osmotic
+        logger.info(f"Stage {stage_number}: Using concentrate osmotic pressure (feed: {feed_osmotic/1e5:.1f} bar, conc: {conc_osmotic/1e5:.1f} bar, using: {avg_osmotic/1e5:.1f} bar)")
     
     # If membrane properties are provided, calculate pressure based on flux requirements
     if membrane_permeability and membrane_area and feed_flow:
@@ -196,10 +216,12 @@ def calculate_required_pressure(
         )
     
     logger.info(
-        f"Pressure calculation for {target_recovery:.0%} recovery:\n"
+        f"Stage {stage_number} pressure calculation for {target_recovery:.0%} recovery:\n"
         f"  Feed TDS: {feed_tds_ppm:.0f} ppm\n"
         f"  Concentrate TDS: {conc_tds_ppm:.0f} ppm (SP={salt_passage:.3f})\n"
-        f"  Avg osmotic pressure: {avg_osmotic/1e5:.1f} bar\n"
+        f"  Feed osmotic: {feed_osmotic/1e5:.1f} bar\n"
+        f"  Concentrate osmotic: {conc_osmotic/1e5:.1f} bar\n"
+        f"  Osmotic pressure used: {avg_osmotic/1e5:.1f} bar\n"
         f"  Required pressure: {required_pressure/1e5:.1f} bar"
     )
     
@@ -408,31 +430,78 @@ def initialize_ro_unit_elegant(
     
     # For MCAS models, provide initialize_guess to help with FBBT
     if hasattr(prop_params, 'solute_set'):
-        # Calculate reasonable initial guesses based on expected recovery
-        if target_recovery:
-            # Use provided target recovery
-            recovery_guess = target_recovery
+        # Progressive recovery guess strategy for robustness at high salinity and later stages
+        # Start conservatively for high-TDS feeds to prevent FBBT over-tightening
+        if target_recovery is None:
+            base_guess = 0.5
         else:
-            # Default guess
-            recovery_guess = 0.5
+            # If feed is already concentrated, avoid high initial recovery guesses
+            if feed_tds_ppm >= 8000:
+                base_guess = min(0.35, target_recovery)
+            else:
+                base_guess = target_recovery
+
+        # Build a sequence of guesses to try if initialization fails
+        # Ensure guesses are monotonically decreasing and within (0, 0.6]
+        guess_candidates = []
+        for g in [base_guess, 0.35, 0.30, 0.25, 0.20, 0.15]:
+            if 0.0 < g <= 0.6 and (not guess_candidates or g < guess_candidates[-1]):
+                guess_candidates.append(g)
         
-        # Provide initialization guesses to avoid FBBT issues
-        initialize_guess = {
-            'deltaP': -0.5e5,  # 0.5 bar pressure drop
-            'solvent_recovery': recovery_guess,
-            'solute_recovery': 0.02,  # 98% rejection (applies to all solutes)
-            'cp_modulus': 1.1  # 10% concentration polarization
-        }
-        
-        # Initialize RO with guesses and output suppressed
-        logger.info(f"[RO TIMING] About to call ro_unit.initialize() at {timing.time()-ro_start:.1f}s")
-        ro_unit.initialize(
-            state_args=state_args,
-            initialize_guess=initialize_guess,
-            optarg=init_options,
-            outlvl=idaeslog.NOTSET  # Suppress solver output
-        )
-        logger.info(f"[RO TIMING] ro_unit.initialize() completed at {timing.time()-ro_start:.1f}s")
+        last_error = None
+        for idx, recovery_guess in enumerate(guess_candidates, start=1):
+            # Provide initialization guesses to avoid FBBT issues
+            # Use mild CP for the first attempt; reduce CP if retries are needed
+            cp_guess = 1.1 if idx == 1 else 1.05 if idx == 2 else 1.0
+            
+            # For high TDS (likely Stage 2+), use lower solute recovery to avoid charge balance issues
+            if feed_tds_ppm >= 8000:
+                solute_recovery_guess = 0.005  # 0.5% passage for better MCAS charge balance
+            else:
+                solute_recovery_guess = 0.02   # Standard 2% passage
+            
+            initialize_guess = {
+                'deltaP': -0.5e5,           # 0.5 bar pressure drop
+                'solvent_recovery': recovery_guess,
+                'solute_recovery': solute_recovery_guess,
+                'cp_modulus': cp_guess       # progressively reduce CP for retries
+            }
+
+            try:
+                logger.info(
+                    f"[RO TIMING] Attempt {idx}: initialize() with recovery_guess={recovery_guess:.2f}, "
+                    f"cp_modulus={cp_guess:.2f} at {timing.time()-ro_start:.1f}s"
+                )
+                ro_unit.initialize(
+                    state_args=state_args,
+                    initialize_guess=initialize_guess,
+                    optarg=init_options,
+                    outlvl=idaeslog.NOTSET  # Suppress solver output
+                )
+                logger.info(
+                    f"[RO TIMING] ro_unit.initialize() succeeded on attempt {idx} "
+                    f"at {timing.time()-ro_start:.1f}s"
+                )
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"RO initialize attempt {idx} failed (guess={recovery_guess:.2f}, cp={cp_guess:.2f}): {e}"
+                )
+                # On failure, try next, possibly with a more permissive flux lower bound if available
+                try:
+                    if hasattr(ro_unit, 'feed_side') and hasattr(ro_unit, 'flux_mass_phase_comp'):
+                        # Relax the water flux lower bound further to avoid FBBT over-tightening
+                        # Use 0.0 LMH (fully non-negative) for maximum permissiveness
+                        jw_min_relaxed = 0.0
+                        for x in ro_unit.feed_side.length_domain:
+                            ro_unit.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setlb(jw_min_relaxed)
+                        logger.info("Relaxed water flux lower bound to 0.00 LMH for next attempt")
+                except Exception as _e:
+                    logger.debug(f"Could not relax flux lower bound: {_e}")
+        else:
+            # If loop did not break (all attempts failed), re-raise the last error
+            raise last_error if last_error else RuntimeError("RO initialize failed for unknown reasons")
     else:
         # Standard initialization for non-MCAS with output suppressed
         logger.info(f"[RO TIMING] About to call ro_unit.initialize() (standard) at {timing.time()-ro_start:.1f}s")

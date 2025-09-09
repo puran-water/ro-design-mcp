@@ -5,6 +5,28 @@ All notable changes to the RO Design MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-09-09
+
+### Added
+- **System-level recovery constraints** for seawater simulations to prevent over-constraining
+- **Improved flux bound relaxation** that properly relaxes to 0.0 LMH (was incorrectly tightening)
+- **Stage-specific solute recovery** using 0.5% for high-TDS feeds (≥8000 ppm) to improve MCAS charge balance
+- **Pre-emptive flux bound adjustment** for Stage 2+ (0.01 LMH minimum) to prevent FBBT issues
+
+### Fixed
+- Seawater simulation failures at 35,000 ppm TDS - now working with system-level constraints
+- Flux bound "relaxation" that was actually tightening bounds (0.02-0.05 LMH instead of relaxing)
+- Over-constrained systems with fixed area and per-stage recovery requirements
+
+### Changed
+- Seawater simulations now use single system-level recovery constraint with 5% tolerance
+- Brackish simulations continue using per-stage constraints with 1% tolerance
+- Flux upper bound for seawater increased from 18 to 25 LMH for better feasibility
+
+### Known Issues
+- Stage 2 initialization still fails for some 2-stage configurations at 75% recovery with ~11,300 ppm feed
+- Large systems exceeding 100,000 m² membrane area require splitting into multiple trains
+
 ## [2.2.0] - 2025-09-08
 
 ### Added

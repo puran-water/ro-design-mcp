@@ -53,6 +53,7 @@ from watertap.costing.unit_models.energy_recovery_device import cost_pressure_ex
 # Import membrane properties handler
 from .membrane_properties_handler import get_membrane_properties_mcas
 from .mcas_builder import estimate_solution_density
+from .ro_initialization import calculate_concentrate_tds
 from .logging_config import get_configured_logger
 
 logger = get_configured_logger(__name__)
@@ -133,6 +134,84 @@ def build_ro_model_v2(
         mcas_params['activity_coefficient_model'] = mcas_config['activity_coefficient_model']
     
     m.fs.properties = MCASParameterBlock(**mcas_params)
+    
+    # =================================================================
+    # Dynamic Scaling Setup (Critical for FBBT convergence)
+    # =================================================================
+    
+    # Set dynamic scaling factors based on actual feed conditions
+    from .mcas_builder import estimate_solution_density
+    
+    # Get feed conditions
+    ion_composition_mg_l = mcas_config.get('ion_composition_mg_l', {})
+    fresh_feed_flow_m3_s = config_data['feed_flow_m3h'] / 3600  # Convert to m³/s
+    
+    # Calculate total TDS for density estimation
+    total_tds_mg_l = sum(ion_composition_mg_l.values()) if ion_composition_mg_l else feed_salinity_ppm
+    
+    # Estimate solution density
+    solution_density_kg_m3 = estimate_solution_density(total_tds_mg_l)
+    
+    # Water gets scaling factor of 1 (it's ~1 kg/s scale)
+    m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1, index=("Liq", "H2O"))
+    # Water concentration (density-based)
+    m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1.0/solution_density_kg_m3, index=("Liq", "H2O"))
+    # Water mass fraction is close to 1
+    m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1.0, index=("Liq", "H2O"))
+    
+    # CRITICAL: Calculate total reference TDS to scale to actual feed_salinity_ppm
+    total_tds_config = sum(ion_composition_mg_l.values())
+    
+    for comp in mcas_config['solute_list']:
+        config_conc_mg_l = ion_composition_mg_l.get(comp, 0)
+        
+        # Scale concentration to actual feed_salinity_ppm
+        if config_conc_mg_l > 0 and total_tds_config > 0:
+            actual_conc_mg_l = config_conc_mg_l * (feed_salinity_ppm / total_tds_config)
+        else:
+            actual_conc_mg_l = config_conc_mg_l
+        
+        if actual_conc_mg_l > 0:
+            # Calculate expected flow rate in kg/s using ACTUAL concentration
+            expected_flow_kg_s = actual_conc_mg_l * fresh_feed_flow_m3_s / 1000
+            # Calculate expected concentration in kg/m³
+            conc_kg_m3 = actual_conc_mg_l * 1e-3
+            # Calculate expected mass fraction
+            mass_frac = conc_kg_m3 / solution_density_kg_m3
+            
+            if expected_flow_kg_s > 0:
+                # Flow mass scaling
+                flow_scale_factor = 1.0 / max(expected_flow_kg_s, 1e-12)
+                flow_scale_factor = max(1e-2, min(1e6, flow_scale_factor))
+                m.fs.properties.set_default_scaling("flow_mass_phase_comp", flow_scale_factor, index=("Liq", comp))
+                
+                # Concentration scaling - critical for FBBT
+                conc_scale_factor = 1.0 / max(conc_kg_m3, 1e-9)
+                conc_scale_factor = max(1e-2, min(1e6, conc_scale_factor))
+                m.fs.properties.set_default_scaling("conc_mass_phase_comp", conc_scale_factor, index=("Liq", comp))
+                
+                # Mass fraction scaling
+                frac_scale_factor = 1.0 / max(mass_frac, 1e-12)
+                frac_scale_factor = max(1e-2, min(1e6, frac_scale_factor))
+                m.fs.properties.set_default_scaling("mass_frac_phase_comp", frac_scale_factor, index=("Liq", comp))
+                
+                logger.debug(f"V2 Scaling for {comp}: flow={flow_scale_factor:.2e}, conc={conc_scale_factor:.2e} "
+                           f"(actual: {actual_conc_mg_l:.1f} mg/L from {feed_salinity_ppm:.0f} mg/L TDS)")
+            else:
+                # Default for very small concentrations
+                m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e4, index=("Liq", comp))
+                m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1e4, index=("Liq", comp))
+                m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1e4, index=("Liq", comp))
+        else:
+            # Default for zero concentration
+            m.fs.properties.set_default_scaling("flow_mass_phase_comp", 1e3, index=("Liq", comp))
+            m.fs.properties.set_default_scaling("conc_mass_phase_comp", 1e3, index=("Liq", comp))
+            m.fs.properties.set_default_scaling("mass_frac_phase_comp", 1e3, index=("Liq", comp))
+    
+    # Pressure scaling (expecting ~50 bar = 5e6 Pa)
+    m.fs.properties.set_default_scaling("pressure", 1e-6)
+    # Temperature scaling (expecting ~300 K)
+    m.fs.properties.set_default_scaling("temperature", 1e-2)
     
     # Water property package for ZO pretreatment (if needed)
     if economic_params and economic_params.get("include_cartridge_filters"):
@@ -220,24 +299,81 @@ def build_ro_model_v2(
         solute_list = list(m.fs.properties.solute_set)
         ion_comp = mcas_config.get('ion_composition_mg_l', {})
 
+        # Pre-compute an approximate stage feed TDS progression to inform bounds
+        # Start with overall feed TDS; update using previous stage recovery
+        approx_stage_feed_tds_ppm = {}
+        default_sp = 0.015 if feed_salinity_ppm <= 10000 else (0.03 if feed_salinity_ppm <= 30000 else 0.05)
+        running_tds = feed_salinity_ppm
+        for i in range(1, n_stages + 1):
+            approx_stage_feed_tds_ppm[i] = max(0.0, running_tds)
+            # Next stage sees previous stage concentrate; if last stage, this is unused
+            stage_data_tmp = config_data['stages'][i-1]
+            stage_rec_tmp = stage_data_tmp.get('stage_recovery', 0.5)
+            try:
+                running_tds = calculate_concentrate_tds(running_tds, stage_rec_tmp, salt_passage=default_sp)
+            except Exception:
+                # Conservative fallback if calc fails
+                running_tds = running_tds / max(1e-6, (1 - stage_rec_tmp))
+
         for i in range(1, n_stages + 1):
             ro = getattr(m.fs, f"ro_stage{i}")
 
-            # Set bounds and initial values for water flux
+            # Set TDS-aware bounds and initial values for water flux
             if hasattr(ro, 'flux_mass_phase_comp'):
-                # Initial guess based on A and a typical dP
+                # Initial guess based on A and TDS-appropriate pressure
                 try:
                     A_w = value(ro.A_comp[0, 'H2O'])
                 except Exception:
                     A_w = 2e-12  # conservative fallback
-                typical_dp = 20e5  # 20 bar
+                
                 rho_water = 1000
-                Jw_init_mass = max(1e-6, min(3e-2, A_w * typical_dp * rho_water))
+                
+                # Determine stage-specific TDS-aware flux bounds and typical pressure
+                # Use the approximate per-stage feed TDS (accounts for previous stage concentration)
+                stage_tds_ppm = approx_stage_feed_tds_ppm.get(i, feed_salinity_ppm)
+                # Conversion: 1 LMH = 2.778e-4 kg/m²/s at ρ=1000 kg/m³
+                if stage_tds_ppm <= 1000:  # Low TDS at this stage
+                    jw_min_lmh = 1.0   # relaxed from 2.0 to be more robust
+                    jw_max_lmh = 40.0  # 40 LMH maximum
+                    typical_dp = 10e5  # 10 bar typical
+                elif stage_tds_ppm <= 10000:  # Medium TDS at this stage
+                    jw_min_lmh = 0.5   # relaxed from 1.0 to avoid infeasibility at Stage 2
+                    jw_max_lmh = 30.0  # 30 LMH maximum
+                    typical_dp = 20e5  # 20 bar typical
+                else:  # High TDS at this stage
+                    # For seawater/high-TDS, permit very low initial flux to avoid infeasibility
+                    if (membrane_type == 'seawater') or (stage_tds_ppm >= 30000):
+                        jw_min_lmh = 0.05  # 0.05 LMH minimum for robustness
+                        jw_max_lmh = 25.0  # Increased from 18 to 25 LMH for feasibility
+                        typical_dp = 55e5  # 55 bar typical for SWRO
+                    elif i >= 2 or stage_tds_ppm >= 8000:
+                        # For Stage 2+ or high-TDS brackish, use very low LB to prevent FBBT issues
+                        jw_min_lmh = 0.01  # Very low LB for Stage 2+ initialization
+                        jw_max_lmh = 25.0  # 25 LMH maximum
+                        typical_dp = 40e5  # 40 bar typical
+                    else:
+                        jw_min_lmh = 0.2   # more permissive lower bound for robustness
+                        jw_max_lmh = 25.0  # 25 LMH maximum
+                        typical_dp = 40e5  # 40 bar typical
+                
+                # For later stages, reduce maximum flux by 10% per stage
+                if i > 1:
+                    jw_max_lmh *= (0.9 ** (i - 1))
+                
+                # Convert LMH to kg/m²/s
+                jw_min = jw_min_lmh * 2.778e-4
+                jw_max = jw_max_lmh * 2.778e-4
+                
+                # Calculate initial value
+                Jw_init_mass = max(jw_min, min(jw_max, A_w * typical_dp * rho_water))
 
                 for x in ro.feed_side.length_domain:
-                    ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setlb(1e-6)  # kg/m²/s
-                    ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setub(3e-2)  # kg/m²/s
+                    ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setlb(jw_min)
+                    ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setub(jw_max)
                     ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].set_value(Jw_init_mass)
+                
+                logger.debug(f"Stage {i}: Water flux bounds = [{jw_min_lmh:.1f}, {jw_max_lmh:.1f}] LMH, "
+                           f"initial = {Jw_init_mass:.2e} kg/m²/s")
 
                 # Solute flux bounds and initials
                 for comp in solute_list:
@@ -284,12 +420,15 @@ def build_ro_model_v2(
             except Exception as _e:
                 logger.debug(f"Could not tighten concentration bounds for stage {i}: {_e}")
 
-        # Reasonable pump pressure bounds to prevent >83 bar
+        # Reasonable pump pressure bounds
+        # Allow higher upper bound for seawater systems which may need >83 bar
+        is_seawater = (membrane_type == 'seawater') or (feed_salinity_ppm >= 30000)
+        pump_ub_bar = 120 if is_seawater else 83
         for i in range(1, n_stages + 1):
             pump = getattr(m.fs, f"pump{i}")
             try:
-                pump.outlet.pressure[0].setlb(10 * pyunits.bar)
-                pump.outlet.pressure[0].setub(83 * pyunits.bar)
+                pump.outlet.pressure[0].setlb(1 * pyunits.bar)
+                pump.outlet.pressure[0].setub(pump_ub_bar * pyunits.bar)
             except Exception as _e:
                 logger.debug(f"Could not set pump{i} pressure bounds: {_e}")
     except Exception as e:
