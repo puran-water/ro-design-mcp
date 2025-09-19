@@ -10,8 +10,16 @@ capability for comprehensive RO system design.
 import numpy as np
 import logging
 from typing import Dict, List, Optional, Tuple, Union
-from .helpers import validate_flux_parameters, convert_numpy_types
-from .constants import DEFAULT_MIN_CONCENTRATE_FLOW_M3H, DEFAULT_FLUX_TOLERANCE
+from .helpers import (
+    validate_flux_parameters,
+    convert_numpy_types,
+    estimate_initial_pump_pressure,
+)
+from .constants import (
+    DEFAULT_MIN_CONCENTRATE_FLOW_M3H,
+    DEFAULT_FLUX_TOLERANCE,
+    DEFAULT_SALT_PASSAGE,
+)
 
 # Set up logging for this module
 logger = logging.getLogger(__name__)
@@ -26,7 +34,7 @@ def optimize_vessel_array_configuration(
     element_area_m2=37.16,  # 400 ft²
     elements_per_vessel=7,
     max_stages=3,  # LIMITED TO 3 STAGES
-    membrane_type='brackish',
+    membrane_model='BW30_PRO_400',
     tolerance=0.02,  # 2% tolerance for recovery
     allow_recycle=True,
     max_recycle_ratio=0.5,
@@ -549,7 +557,7 @@ def optimize_vessel_array_configuration(
                         'feed_flow_m3h': feed_flow_m3h,
                         'feed_salinity_ppm': feed_salinity_ppm,
                         'target_recovery': target_recovery,
-                        'membrane_type': membrane_type
+                        'membrane_model': membrane_model
                     }
                     
                     # Phase 2: Global flux optimization if overshooting
@@ -635,6 +643,14 @@ def optimize_vessel_array_configuration(
                     
                     # Calculate recycle split ratio
                     recycle_split_ratio = recycle_flow / actual_concentrate
+
+                    if recycle_split_ratio > max_recycle_ratio + 1e-6:
+                        logger.debug(
+                            "    Skipping solution with recycle split %.1f%% above max %.1f%%",
+                            recycle_split_ratio * 100,
+                            max_recycle_ratio * 100,
+                        )
+                        continue
                     
                     # Estimate effective salinity
                     conc_factor = 1 / (1 - eff_recovery)
@@ -852,7 +868,7 @@ def optimize_vessel_array_configuration(
             'feed_flow_m3h': feed_flow_m3h,
             'feed_salinity_ppm': feed_salinity_ppm,
             'target_recovery': target_recovery,
-            'membrane_type': membrane_type,
+            'membrane_model': membrane_model,
             'n_stages': config['n_stages'],
             'stages': []
         }
@@ -874,6 +890,13 @@ def optimize_vessel_array_configuration(
             results['effective_feed_salinity_ppm'] = feed_salinity_ppm
         
         # Build detailed stage information
+        # Determine salt passage based on membrane model
+        if membrane_model.startswith('SW'):
+            salt_passage = DEFAULT_SALT_PASSAGE['seawater']
+        else:
+            salt_passage = DEFAULT_SALT_PASSAGE['brackish']
+        current_stage_salinity = results.get('effective_feed_salinity_ppm', feed_salinity_ppm)
+
         for stage_data in config['stages']:
             stage_config = {
                 'stage_number': stage_data['stage_number'],
@@ -893,7 +916,33 @@ def optimize_vessel_array_configuration(
                 'min_concentrate_required': stage_data['min_conc_per_vessel'],
                 'concentrate_flow_ratio': stage_data['concentrate_ratio']
             }
+
+            try:
+                stage_recovery_for_pressure = min(max(stage_data['stage_recovery'], 1e-6), 0.99)
+                stage_pressure_pa = estimate_initial_pump_pressure(
+                    current_stage_salinity,
+                    stage_recovery_for_pressure,
+                    membrane_type=membrane_model,
+                )
+                stage_config['feed_pressure_bar'] = stage_pressure_pa / 1e5
+            except Exception as _e:
+                logger.debug(
+                    "Could not estimate feed pressure for stage %s: %s",
+                    stage_data['stage_number'],
+                    _e,
+                )
+
             results['stages'].append(stage_config)
+
+            # Estimate next-stage salinity using mass balance to aid pressure estimates
+            try:
+                stage_recovery = min(max(stage_data['stage_recovery'], 1e-6), 0.99)
+                concentration_factor = (1 - salt_passage) / max(1 - stage_recovery, 1e-6)
+                next_salinity = current_stage_salinity * concentration_factor
+                current_stage_salinity = min(max(next_salinity, 100.0), 100000.0)
+            except Exception:
+                # Fall back to leaving salinity unchanged if calculation fails
+                pass
         
         # Summary statistics
         results['array_notation'] = ':'.join(str(s['n_vessels']) for s in results['stages'])

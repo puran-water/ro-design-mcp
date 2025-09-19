@@ -115,7 +115,7 @@ def validate_flux_tolerance(flux_tolerance: Optional[float]) -> None:
 def validate_optimize_ro_inputs(
     feed_flow_m3h: float,
     water_recovery_fraction: float,
-    membrane_type: str = "brackish",
+    membrane_model: str,
     allow_recycle: bool = True,
     max_recycle_ratio: float = 0.9,
     flux_targets_lmh: Optional[str] = None,
@@ -123,24 +123,26 @@ def validate_optimize_ro_inputs(
 ) -> Tuple[Optional[Union[float, List[float]]], Optional[float]]:
     """
     Validate all inputs for optimize_ro_configuration.
-    
+
     Args:
         All parameters from optimize_ro_configuration
-        
+
     Returns:
         Tuple of (parsed_flux_targets, flux_tolerance)
-        
+
     Raises:
         ValueError: If any input is invalid
     """
     # Validate basic parameters
     validate_flow_rate(feed_flow_m3h, "feed_flow_m3h")
     validate_recovery_target(water_recovery_fraction)
-    validate_membrane_type(membrane_type)
+    # Skip membrane validation - will be checked against catalog elsewhere
+    if not membrane_model:
+        raise ValueError("membrane_model is required")
     validate_recycle_parameters(allow_recycle, max_recycle_ratio)
-    
+
     # Validate and parse flux parameters
     validate_flux_tolerance(flux_tolerance)
     parsed_flux_targets = parse_flux_targets(flux_targets_lmh)
-    
+
     return parsed_flux_targets, flux_tolerance

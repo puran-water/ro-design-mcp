@@ -2,13 +2,16 @@
 Membrane properties handler for RO simulations.
 
 This module provides functions to handle membrane properties from different sources:
-- Specific membrane models (e.g., 'bw30_400', 'eco_pro_400')
-- Generic types ('brackish', 'seawater')
+- Specific membrane models from catalog (e.g., 'BW30_PRO_400', 'SW30HRLE_440')
+- Generic types ('brackish', 'seawater') for backward compatibility
 - Custom properties passed directly
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 import logging
+import yaml
+from pathlib import Path
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -142,3 +145,161 @@ def get_membrane_properties_mcas(
     logger.info(f"Generated ion-specific B values for {membrane_type}: {B_comp}")
     
     return {'A_w': A_w, 'B_comp': B_comp}
+
+
+def load_membrane_catalog() -> Dict:
+    """Load the membrane catalog from YAML file."""
+    catalog_path = Path(__file__).parent.parent / 'config' / 'membrane_catalog.yaml'
+
+    if not catalog_path.exists():
+        logger.warning(f"Membrane catalog not found at {catalog_path}")
+        return {}
+
+    with open(catalog_path, 'r') as f:
+        data = yaml.safe_load(f)
+
+    return data.get('membrane_catalog', {})
+
+
+def load_spacer_profiles() -> Dict:
+    """Load spacer profiles from YAML file."""
+    profiles_path = Path(__file__).parent.parent / 'config' / 'spacer_profiles.yaml'
+
+    if not profiles_path.exists():
+        logger.warning(f"Spacer profiles not found at {profiles_path}")
+        return {}
+
+    with open(profiles_path, 'r') as f:
+        data = yaml.safe_load(f)
+
+    return data.get('spacer_profiles', {})
+
+
+def get_membrane_from_catalog(
+    membrane_model: str,
+    solute_list: Optional[List[str]] = None,
+    temperature_K: float = 298.15
+) -> Dict:
+    """
+    Get membrane properties from catalog with temperature correction.
+
+    Args:
+        membrane_model: Specific membrane model name (e.g., 'BW30_PRO_400')
+        solute_list: List of solutes for which to get B values
+        temperature_K: Operating temperature in Kelvin
+
+    Returns:
+        Dict with A_w, B_comp, and physical properties
+    """
+    catalog = load_membrane_catalog()
+    spacer_profiles = load_spacer_profiles()
+
+    # Normalize model name (handle variations)
+    model_key = membrane_model.replace('-', '_').replace(' ', '_')
+
+    if model_key not in catalog:
+        # Try without spaces/hyphens
+        for key in catalog.keys():
+            if key.lower() == model_key.lower():
+                model_key = key
+                break
+        else:
+            logger.warning(f"Membrane model '{membrane_model}' not found in catalog")
+            # Fall back to generic type
+            if 'SW' in membrane_model.upper():
+                return get_membrane_properties_mcas('seawater', None, solute_list)
+            else:
+                return get_membrane_properties_mcas('brackish', None, solute_list)
+
+    membrane = catalog[model_key]
+
+    # Get spacer properties
+    spacer = spacer_profiles.get(membrane.get('spacer_profile', 'default'),
+                                  spacer_profiles.get('default', {}))
+
+    # Temperature correction using Arrhenius equation
+    R = 8.314  # J/mol/K
+    T_ref = membrane.get('temperature_corrections', {}).get('reference_temperature', 298.15)
+
+    # Apply temperature correction to A_w
+    E_a_A = membrane.get('temperature_corrections', {}).get('A_w_activation_energy', 20000)
+    A_w_corrected = membrane['A_w'] * np.exp(
+        -E_a_A / R * (1/temperature_K - 1/T_ref)
+    )
+
+    # Apply temperature correction to B values
+    E_a_B = membrane.get('temperature_corrections', {}).get('B_activation_energy', 13000)
+    B_comp_corrected = {}
+
+    # If solute list provided, filter B values
+    if solute_list:
+        for solute in solute_list:
+            # Normalize ion names (handle Na+ vs Na_+)
+            ion_key = solute.replace('+', '_+').replace('-', '_-')
+            if ion_key in membrane['B_comp']:
+                B_comp_corrected[solute] = membrane['B_comp'][ion_key] * np.exp(
+                    -E_a_B / R * (1/temperature_K - 1/T_ref)
+                )
+            else:
+                # Use Na+ as default for unknown ions
+                logger.warning(f"Ion {solute} not in membrane data, using Na+ value")
+                B_comp_corrected[solute] = membrane['B_comp'].get('Na_+', 5e-8) * np.exp(
+                    -E_a_B / R * (1/temperature_K - 1/T_ref)
+                )
+    else:
+        # Return all B values with temperature correction
+        for ion, B_val in membrane['B_comp'].items():
+            B_comp_corrected[ion] = B_val * np.exp(
+                -E_a_B / R * (1/temperature_K - 1/T_ref)
+            )
+
+    return {
+        'A_w': A_w_corrected,
+        'B_comp': B_comp_corrected,
+        'channel_height': spacer.get('channel_height', 7.9e-4),
+        'spacer_porosity': spacer.get('spacer_porosity', 0.85),
+        'friction_factor': spacer.get('friction_factor', 6.8),
+        'active_area_m2': membrane['physical']['active_area_m2'],
+        'element_type': membrane['physical']['element_type'],
+        'family': membrane.get('family', 'brackish'),
+        'limits': membrane.get('limits', {}),
+    }
+
+
+def get_membrane_properties_enhanced(
+    membrane_model: Optional[str] = None,
+    membrane_type: Optional[str] = None,
+    solute_list: Optional[List[str]] = None,
+    temperature_K: float = 298.15,
+    custom_properties: Optional[Dict] = None
+) -> Dict:
+    """
+    Enhanced membrane properties handler that supports both catalog models and generic types.
+
+    Args:
+        membrane_model: Specific model from catalog (e.g., 'BW30_PRO_400')
+        membrane_type: Generic type for backward compatibility ('brackish', 'seawater')
+        solute_list: List of solutes
+        temperature_K: Operating temperature
+        custom_properties: Override properties
+
+    Returns:
+        Complete membrane properties dictionary
+    """
+    # Priority: custom_properties > membrane_model > membrane_type
+
+    if custom_properties and 'A_w' in custom_properties and 'B_comp' in custom_properties:
+        logger.info("Using custom membrane properties")
+        return custom_properties
+
+    if membrane_model:
+        logger.info(f"Loading membrane model '{membrane_model}' from catalog")
+        return get_membrane_from_catalog(membrane_model, solute_list, temperature_K)
+
+    if membrane_type:
+        logger.info(f"Using generic membrane type '{membrane_type}'")
+        return get_membrane_properties_mcas(membrane_type, custom_properties, solute_list)
+
+    # Default fallback
+    logger.warning("No membrane specified, using default brackish properties")
+    return get_membrane_properties_mcas('brackish', None, solute_list)

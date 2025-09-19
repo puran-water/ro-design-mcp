@@ -1,0 +1,3088 @@
+# RO Membrane Catalog
+# Generated from FilmTec membrane specifications
+# Last updated: 2025-09-19T15:20:36.793344
+# Total membranes: 67
+
+membrane_catalog:
+  Eco_Pro-400:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.5
+    metadata:
+      raw_name: Eco Pro-400
+      import_date: '2025-09-19T15:19:18.142805'
+      row_number: 1
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Eco_Pro-400i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.5
+    metadata:
+      raw_name: Eco Pro-400i
+      import_date: '2025-09-19T15:19:19.556147'
+      row_number: 2
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Eco_Pro-440:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: Eco Pro-440
+      import_date: '2025-09-19T15:19:20.899772'
+      row_number: 3
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Eco_Pro-440i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: Eco Pro-440i
+      import_date: '2025-09-19T15:19:21.854070'
+      row_number: 4
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Eco_Platinum-440:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: Eco Platinum-440
+      import_date: '2025-09-19T15:19:22.898743'
+      row_number: 5
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Eco_Platinum-440i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: Eco Platinum-440i
+      import_date: '2025-09-19T15:19:23.953272'
+      row_number: 6
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  XLE-440:
+    family: ultra_low_energy
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.8226304104252218e-08
+      Cl_-: 4.2171555683105545e-08
+      Ca_2+: 1.7248731590449454e-09
+      Mg_2+: 1.2292675881825879e-09
+      K_+: 4.0512238847836995e-08
+      Sr_2+: 1.5283686219385592e-09
+      SO4_2-: 4.17731499472845e-09
+      HCO3_-: 2.2496524443171678e-08
+      SiO3_2-: 3.1687692839257087e-09
+      Br_-: 4.191384091130808e-08
+      F_-: 2.4582117878894938e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 18000
+      B_activation_energy: 12000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 8.6
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.99
+      test_solute: NaCl
+      permeate_flow_m3_day: 53.0
+    metadata:
+      raw_name: XLE-440
+      import_date: '2025-09-19T15:19:25.048205'
+      row_number: 9
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: ultra_low_energy'
+  XLE-B-440france_potable_only:
+    family: ultra_low_energy
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.8226304104252218e-08
+      Cl_-: 4.2171555683105545e-08
+      Ca_2+: 1.7248731590449454e-09
+      Mg_2+: 1.2292675881825879e-09
+      K_+: 4.0512238847836995e-08
+      Sr_2+: 1.5283686219385592e-09
+      SO4_2-: 4.17731499472845e-09
+      HCO3_-: 2.2496524443171678e-08
+      SiO3_2-: 3.1687692839257087e-09
+      Br_-: 4.191384091130808e-08
+      F_-: 2.4582117878894938e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 18000
+      B_activation_energy: 12000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 8.6
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.99
+      test_solute: NaCl
+      permeate_flow_m3_day: 53.0
+    metadata:
+      raw_name: XLE-B-440(france potable only)
+      import_date: '2025-09-19T15:19:26.048347'
+      row_number: 10
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: ultra_low_energy'
+  XLE-440i:
+    family: ultra_low_energy
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.8226304104252218e-08
+      Cl_-: 4.2171555683105545e-08
+      Ca_2+: 1.7248731590449454e-09
+      Mg_2+: 1.2292675881825879e-09
+      K_+: 4.0512238847836995e-08
+      Sr_2+: 1.5283686219385592e-09
+      SO4_2-: 4.17731499472845e-09
+      HCO3_-: 2.2496524443171678e-08
+      SiO3_2-: 3.1687692839257087e-09
+      Br_-: 4.191384091130808e-08
+      F_-: 2.4582117878894938e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 18000
+      B_activation_energy: 12000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 8.6
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.99
+      test_solute: NaCl
+      permeate_flow_m3_day: 53.0
+    metadata:
+      raw_name: XLE-440i
+      import_date: '2025-09-19T15:19:27.039795'
+      row_number: 11
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: ultra_low_energy'
+  BW30HRLE-440:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.993
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: BW30HRLE-440
+      import_date: '2025-09-19T15:19:28.105437'
+      row_number: 14
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: high_rejection'
+  BW30HRLE-440i:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.993
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.9
+    metadata:
+      raw_name: BW30HRLE-440i
+      import_date: '2025-09-19T15:19:29.106893'
+      row_number: 15
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: high_rejection'
+  BW30FR-400/34China_only:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.13
+    metadata:
+      raw_name: BW30FR-400/34(China only)
+      import_date: '2025-09-19T15:19:30.479824'
+      row_number: 20
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: fouling_resistant'
+  BW30FR-400/34iChina_only:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.13
+    metadata:
+      raw_name: BW30FR-400/34i(China only)
+      import_date: '2025-09-19T15:19:31.364613'
+      row_number: 23
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: fouling_resistant'
+  BW30XHR_PRO-440:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.88
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 48.0
+    metadata:
+      raw_name: BW30XHR PRO-440
+      import_date: '2025-09-19T15:19:32.202064'
+      row_number: 29
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: high_rejection'
+  BW30XHR_PRO-400/34:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: BW30XHR PRO-400/34
+      import_date: '2025-09-19T15:19:33.268106'
+      row_number: 30
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: high_rejection'
+  BW30XHR_PRO-400/34i:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: BW30XHR PRO-400/34i
+      import_date: '2025-09-19T15:19:34.399114'
+      row_number: 31
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: high_rejection'
+  BW30_PRO-365:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 34.0
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.9954999999999999
+      test_solute: NaCl
+      permeate_flow_m3_day: 37.9
+    metadata:
+      raw_name: BW30 PRO-365
+      import_date: '2025-09-19T15:19:39.305735'
+      row_number: 32
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  BW30HR-440:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 48.0
+    metadata:
+      raw_name: BW30HR-440
+      import_date: '2025-09-19T15:19:40.281521'
+      row_number: 33
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: high_rejection'
+  BW30HR-440i:
+    family: high_rejection
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.3502378176116017e-08
+      Cl_-: 3.124145684453824e-08
+      Ca_2+: 7.012810933685961e-10
+      Mg_2+: 4.99782905057542e-10
+      K_+: 3.001220469908737e-08
+      Sr_2+: 6.213883105797686e-10
+      SO4_2-: 1.6983695360360494e-09
+      HCO3_-: 1.6665835209513215e-08
+      SiO3_2-: 1.288325449562138e-09
+      Br_-: 3.1050537045851845e-08
+      F_-: 1.821088082763119e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 21000
+      B_activation_energy: 14000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 48.0
+    metadata:
+      raw_name: BW30HR-440i
+      import_date: '2025-09-19T15:19:41.120500'
+      row_number: 34
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: high_rejection'
+  BW30XFRLE-400/34:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.993
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.5
+    metadata:
+      raw_name: BW30XFRLE-400/34
+      import_date: '2025-09-19T15:19:42.154170'
+      row_number: 35
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: fouling_resistant'
+  BW30XFRLE-400/34i:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.993
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.5
+    metadata:
+      raw_name: BW30XFRLE-400/34i
+      import_date: '2025-09-19T15:19:43.216624'
+      row_number: 36
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: fouling_resistant'
+  BW30_PRO-400_IG:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.9954999999999999
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.0
+    metadata:
+      raw_name: BW30 PRO-400 IG
+      import_date: '2025-09-19T15:19:44.201541'
+      row_number: 41
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  BW30_PRO-400:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.996
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.0
+    metadata:
+      raw_name: BW30 PRO-400
+      import_date: '2025-09-19T15:19:45.204911'
+      row_number: 42
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  BW30_PRO-400/34:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.996
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.6
+    metadata:
+      raw_name: BW30 PRO-400/34
+      import_date: '2025-09-19T15:19:46.294621'
+      row_number: 43
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: brackish'
+  BW30_PRO-400/34i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.996
+      test_solute: NaCl
+      permeate_flow_m3_day: 41.6
+    metadata:
+      raw_name: BW30 PRO-400/34i
+      import_date: '2025-09-19T15:19:47.306461'
+      row_number: 44
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: brackish'
+  Seamaxx-440:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 0.0
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 64.3
+    metadata:
+      raw_name: "Seamaxx\u2122-440"
+      import_date: '2025-09-19T15:19:48.721920'
+      row_number: 49
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  Seamaxx-440i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 0.0
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 64.3
+    metadata:
+      raw_name: "Seamaxx\u2122-440i"
+      import_date: '2025-09-19T15:19:49.713702'
+      row_number: 50
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XFR-400/34i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 28.4
+    metadata:
+      raw_name: SW30XFR-400/34i
+      import_date: '2025-09-19T15:19:50.793918'
+      row_number: 51
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: seawater'
+  SW30XFR-400/34:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 28.4
+    metadata:
+      raw_name: SW30XFR-400/34
+      import_date: '2025-09-19T15:19:51.903114'
+      row_number: 52
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: seawater'
+  SW30XLE-400:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 34.1
+    metadata:
+      raw_name: SW30XLE-400
+      import_date: '2025-09-19T15:19:53.193552'
+      row_number: 53
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XLE-440:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 0.0
+    metadata:
+      raw_name: SW30XLE-440
+      import_date: '2025-09-19T15:19:53.460784'
+      row_number: 55
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XLE-440i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 37.5
+    metadata:
+      raw_name: SW30XLE-440i
+      import_date: '2025-09-19T15:19:54.450905'
+      row_number: 56
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30HRLE-370/34:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 34.4
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 0.0
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 25.3
+    metadata:
+      raw_name: SW30HRLE-370/34
+      import_date: '2025-09-19T15:19:55.643780'
+      row_number: 61
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: seawater'
+  SW30HRLE-370/34i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 34.4
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 0.0
+      temperature_c: 25.0
+      feed_ppm: 13.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 25.3
+    metadata:
+      raw_name: SW30HRLE-370/34i
+      import_date: '2025-09-19T15:19:57.785326'
+      row_number: 62
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: seawater'
+  SW30HRLE-400:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 28.4
+    metadata:
+      raw_name: SW30HRLE-400
+      import_date: '2025-09-19T15:19:58.894813'
+      row_number: 63
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30HRLE-440:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 30.2
+    metadata:
+      raw_name: SW30HRLE-440
+      import_date: '2025-09-19T15:20:00.031370'
+      row_number: 65
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30HRLE-440i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 30.2
+    metadata:
+      raw_name: SW30HRLE-440i
+      import_date: '2025-09-19T15:20:01.409432'
+      row_number: 66
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XHR-400:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.9982
+      test_solute: NaCl
+      permeate_flow_m3_day: 22.7
+    metadata:
+      raw_name: SW30XHR-400
+      import_date: '2025-09-19T15:20:02.593187'
+      row_number: 67
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XHR-440:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.9982
+      test_solute: NaCl
+      permeate_flow_m3_day: 25.0
+    metadata:
+      raw_name: SW30XHR-440
+      import_date: '2025-09-19T15:20:04.035730'
+      row_number: 69
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30XHR-440i:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.9982
+      test_solute: NaCl
+      permeate_flow_m3_day: 25.0
+    metadata:
+      raw_name: SW30XHR-440i
+      import_date: '2025-09-19T15:20:05.456356'
+      row_number: 70
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  SW30HR-380:
+    family: seawater
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 3.665237101866572e-09
+      Cl_-: 8.48053174406815e-09
+      Ca_2+: 1.5585654353611578e-10
+      Mg_2+: 1.1107448473556037e-10
+      K_+: 8.14684974284667e-09
+      Sr_2+: 1.3810073477883678e-10
+      SO4_2-: 3.7745492932387804e-10
+      HCO3_-: 4.523961390116616e-09
+      SiO3_2-: 2.86324490161079e-10
+      Br_-: 8.428706330759548e-09
+      F_-: 4.943365916470308e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 23000
+      B_activation_energy: 15000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 35.3
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 26.4
+    metadata:
+      raw_name: SW30HR-380
+      import_date: '2025-09-19T15:20:06.658570'
+      row_number: 71
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: seawater'
+  NF90B-400france_potable_only:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: nf_20mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.97
+      test_solute: MgSO4
+      permeate_flow_m3_day: 37.9
+    metadata:
+      raw_name: NF90B-400(france potable only)
+      import_date: '2025-09-19T15:20:07.802699'
+      row_number: 73
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: nf_20mil'
+      - 'Family: nanofiltration'
+  NF90-400/34i:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.987
+      test_solute: MgSO4
+      permeate_flow_m3_day: 37.9
+    metadata:
+      raw_name: NF90-400/34i
+      import_date: '2025-09-19T15:20:09.031665'
+      row_number: 74
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: nanofiltration'
+  NF90-400/34:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.987
+      test_solute: MgSO4
+      permeate_flow_m3_day: 37.9
+    metadata:
+      raw_name: NF90-400/34
+      import_date: '2025-09-19T15:20:10.018392'
+      row_number: 75
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: nanofiltration'
+  NF270-400/34:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.97
+      test_solute: MgSO4
+      permeate_flow_m3_day: 47.0
+    metadata:
+      raw_name: NF270-400/34
+      import_date: '2025-09-19T15:20:11.035849'
+      row_number: 77
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: nanofiltration'
+  NF270-400/34i:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.97
+      test_solute: MgSO4
+      permeate_flow_m3_day: 47.0
+    metadata:
+      raw_name: NF270-400/34i
+      import_date: '2025-09-19T15:20:12.131770'
+      row_number: 78
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: nanofiltration'
+  NF270-440:
+    family: nanofiltration
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 8.057272496008946e-08
+      Cl_-: 1.864271076439042e-07
+      Ca_2+: 2.3283352256882643e-09
+      Mg_2+: 1.6593376807759781e-09
+      K_+: 1.790917928030557e-07
+      Sr_2+: 2.0630818455465634e-09
+      SO4_2-: 5.638785437653505e-09
+      HCO3_-: 2.486250457237129e-08
+      SiO3_2-: 4.277391127083424e-09
+      Br_-: 1.8528783216010795e-07
+      F_-: 1.0866976713784843e-07
+    spacer_profile: nf_20mil
+    temperature_corrections:
+      A_w_activation_energy: 17000
+      B_activation_energy: 11000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 4.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.97
+      test_solute: MgSO4
+      permeate_flow_m3_day: 51.7
+    metadata:
+      raw_name: NF270-440
+      import_date: '2025-09-19T15:20:13.308494'
+      row_number: 79
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: nf_20mil'
+      - 'Family: nanofiltration'
+  RO-390-FF:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 36.2
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 51.8
+    metadata:
+      raw_name: RO-390-FF
+      import_date: '2025-09-19T15:20:14.722340'
+      row_number: 80
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  HSRO-390-FF:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 36.2
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.99
+      test_solute: NaCl
+      permeate_flow_m3_day: 34.0
+    metadata:
+      raw_name: HSRO-390-FF
+      import_date: '2025-09-19T15:20:15.749876'
+      row_number: 81
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  SG30-400/34i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_34mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 38.6
+    metadata:
+      raw_name: SG30-400/34i
+      import_date: '2025-09-19T15:20:16.956655'
+      row_number: 82
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_34mil'
+      - 'Family: brackish'
+  SG30LE-440i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 41.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 38.0
+    metadata:
+      raw_name: SG30LE-440i
+      import_date: '2025-09-19T15:20:18.045822'
+      row_number: 83
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  SG30LE_PRO-440:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 0.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 7.5
+      temperature_c: 25.0
+      feed_ppm: 0.1
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 38.0
+    metadata:
+      raw_name: SG30LE PRO-440
+      import_date: '2025-09-19T15:20:20.383052'
+      row_number: 84
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Hypershell_RO-390:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 36.2
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.995
+      test_solute: NaCl
+      permeate_flow_m3_day: 51.8
+    metadata:
+      raw_name: "Hypershell\u2122 RO-390"
+      import_date: '2025-09-19T15:20:21.618399'
+      row_number: 85
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Hypershell_HSRO-390:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 36.2
+      element_type: '8020'
+      elements_per_vessel: 6
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 10.3
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.99
+      test_solute: NaCl
+      permeate_flow_m3_day: 34.0
+    metadata:
+      raw_name: "Hypershell\u2122 HSRO-390"
+      import_date: '2025-09-19T15:20:23.304059'
+      row_number: 86
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  XUS180808:
+    family: brackish
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 4.947552583808937e-09
+      Cl_-: 1.1447520467658274e-08
+      Ca_2+: 3.833452393755991e-10
+      Mg_2+: 2.7319914822573945e-10
+      K_+: 1.0997096879379875e-08
+      Sr_2+: 3.3967299691508776e-10
+      SO4_2-: 9.283893184865372e-10
+      HCO3_-: 6.106709127582694e-09
+      SiO3_2-: 7.042446068006175e-10
+      Br_-: 1.137756347704739e-08
+      F_-: 6.672846021418467e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 30.7
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 28.0
+    metadata:
+      raw_name: XUS180808
+      import_date: '2025-09-19T15:20:24.454535'
+      row_number: 87
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Fortilife_CR200:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.0
+    metadata:
+      raw_name: "Fortilife\u2122 CR200"
+      import_date: '2025-09-19T15:20:25.421373'
+      row_number: 88
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  Fortilife_CR100:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: "Fortilife\u2122 CR100"
+      import_date: '2025-09-19T15:20:26.539067'
+      row_number: 89
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  Fortilife_CR100i:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.0
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: "Fortilife\u2122 CR100i"
+      import_date: '2025-09-19T15:20:27.408905'
+      row_number: 90
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  Fortilife_CR50:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.996
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: "Fortilife\u2122 CR50"
+      import_date: '2025-09-19T15:20:28.454160'
+      row_number: 91
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  Fortilife_XC70:
+    family: fouling_resistant
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 4.947552583808937e-09
+      Cl_-: 1.1447520467658274e-08
+      Ca_2+: 3.833452393755991e-10
+      Mg_2+: 2.7319914822573945e-10
+      K_+: 1.0997096879379875e-08
+      Sr_2+: 3.3967299691508776e-10
+      SO4_2-: 9.283893184865372e-10
+      HCO3_-: 6.106709127582694e-09
+      SiO3_2-: 7.042446068006175e-10
+      Br_-: 1.137756347704739e-08
+      F_-: 6.672846021418467e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.9975
+      test_solute: NaCl
+      permeate_flow_m3_day: 33.3
+    metadata:
+      raw_name: "Fortilife\u2122 XC70"
+      import_date: '2025-09-19T15:20:29.650564'
+      row_number: 93
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  Fortilife_XC80:
+    family: fouling_resistant
+    A_w: 3.0e-12
+    B_comp:
+      Na_+: 4.947552583808937e-09
+      Cl_-: 1.1447520467658274e-08
+      Ca_2+: 3.833452393755991e-10
+      Mg_2+: 2.7319914822573945e-10
+      K_+: 1.0997096879379875e-08
+      Sr_2+: 3.3967299691508776e-10
+      SO4_2-: 9.283893184865372e-10
+      HCO3_-: 6.106709127582694e-09
+      SiO3_2-: 7.042446068006175e-10
+      Br_-: 1.137756347704739e-08
+      F_-: 6.672846021418467e-09
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 8270000
+      max_temperature_c: 45
+      pH_range:
+      - 3
+      - 11
+    test_conditions:
+      pressure_bar: 55.2
+      temperature_c: 25.0
+      feed_ppm: 32000.0
+      recovery: 0.08
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 64.3
+    metadata:
+      raw_name: "Fortilife\u2122 XC80"
+      import_date: '2025-09-19T15:20:30.585426'
+      row_number: 94
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'
+  FilmTec_SOAR_3000i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 4.947552583808937e-08
+      Cl_-: 1.1447520467658276e-07
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 1.0997096879379877e-07
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 1.1377563477047392e-07
+      F_-: 6.672846021418468e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 6.89
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.2
+      rejection: 0.9890000000000001
+      test_solute: MgSO4
+      permeate_flow_m3_day: 54.5
+    metadata:
+      raw_name: "FilmTec\u2122 SOAR 3000i"
+      import_date: '2025-09-19T15:20:31.466125'
+      row_number: 95
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  FilmTec_SOAR_4000i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 13.8
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.2
+      rejection: 0.9940000000000001
+      test_solute: NaCl
+      permeate_flow_m3_day: 56.8
+    metadata:
+      raw_name: "FilmTec\u2122 SOAR 4000i"
+      import_date: '2025-09-19T15:20:32.431599'
+      row_number: 96
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  FilmTec_SOAR_5000i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 16.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.2
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.0
+    metadata:
+      raw_name: "FilmTec\u2122 SOAR 5000i"
+      import_date: '2025-09-19T15:20:33.620650'
+      row_number: 97
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  FilmTec_SOAR_6000i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 27.58
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.25
+      rejection: 0.997
+      test_solute: NaCl
+      permeate_flow_m3_day: 90.84
+    metadata:
+      raw_name: "FilmTec\u2122 SOAR 6000i"
+      import_date: '2025-09-19T15:20:34.740654'
+      row_number: 98
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  FilmTec_SOAR_7000i:
+    family: brackish
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 40.9
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 2
+      - 11
+    test_conditions:
+      pressure_bar: 27.58
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.25
+      rejection: 0.998
+      test_solute: NaCl
+      permeate_flow_m3_day: 47.31
+    metadata:
+      raw_name: "FilmTec\u2122 SOAR 7000i"
+      import_date: '2025-09-19T15:20:35.730919'
+      row_number: 99
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: brackish'
+  Fortilife_CR50i:
+    family: fouling_resistant
+    A_w: 9.0e-12
+    B_comp:
+      Na_+: 1.649184194602979e-08
+      Cl_-: 3.815840155886092e-08
+      Ca_2+: 1.2778174645853304e-09
+      Mg_2+: 9.106638274191316e-10
+      K_+: 3.665698959793292e-08
+      Sr_2+: 1.1322433230502925e-09
+      SO4_2-: 3.0946310616217904e-09
+      HCO3_-: 2.0355697091942313e-08
+      SiO3_2-: 2.3474820226687255e-09
+      Br_-: 3.792521159015797e-08
+      F_-: 2.2242820071394893e-08
+    spacer_profile: filmtec_31mil
+    temperature_corrections:
+      A_w_activation_energy: 20000
+      B_activation_energy: 13000
+      reference_temperature: 298.15
+    physical:
+      active_area_m2: 37.2
+      element_type: '8040'
+      elements_per_vessel: 7
+    limits:
+      max_pressure_pa: 4137000
+      max_temperature_c: 45
+      pH_range:
+      - 1
+      - 13
+    test_conditions:
+      pressure_bar: 15.5
+      temperature_c: 25.0
+      feed_ppm: 2000.0
+      recovery: 0.15
+      rejection: 0.996
+      test_solute: NaCl
+      permeate_flow_m3_day: 43.0
+    metadata:
+      raw_name: "Fortilife\u2122 CR50i"
+      import_date: '2025-09-19T15:20:36.793344'
+      row_number: 100
+      assumptions:
+      - Diffusivity-based ion B ratios
+      - 'Spacer profile: filmtec_31mil'
+      - 'Family: fouling_resistant'

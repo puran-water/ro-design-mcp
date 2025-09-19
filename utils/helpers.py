@@ -97,8 +97,16 @@ def estimate_initial_pump_pressure(feed_salinity_ppm: float,
     required_pressure_pa = required_pressure_bar * 1e5
     
     # Apply membrane-specific limits
+    # For specific membrane models, determine if it's seawater or brackish based on prefix
+    if membrane_type not in MEMBRANE_PROPERTIES:
+        # Default to seawater limits for SW models, brackish otherwise
+        if membrane_type.startswith('SW'):
+            membrane_type = 'seawater'
+        else:
+            membrane_type = 'brackish'
+
     max_pressure = MEMBRANE_PROPERTIES[membrane_type]['max_pressure']
-    
+
     return min(required_pressure_pa, max_pressure)
 
 
@@ -126,7 +134,12 @@ def get_pump_pressure_bounds(membrane_type: str = 'brackish',
     lower_bound = 10e5  # 10 bar
     
     # Upper bound based on membrane type
-    if membrane_type == 'brackish':
+    # For specific membrane models, determine if it's seawater or brackish based on prefix
+    effective_type = membrane_type
+    if membrane_type not in MEMBRANE_PROPERTIES:
+        effective_type = 'seawater' if membrane_type.startswith('SW') else 'brackish'
+
+    if effective_type == 'brackish':
         # Brackish water typical bounds
         if stage == 1:
             upper_bound = 65e5  # 65 bar for first stages
@@ -134,7 +147,7 @@ def get_pump_pressure_bounds(membrane_type: str = 'brackish',
             upper_bound = 85e5  # 85 bar for last stage
     else:
         # Seawater bounds
-        upper_bound = MEMBRANE_PROPERTIES[membrane_type]['max_pressure']
+        upper_bound = MEMBRANE_PROPERTIES[effective_type]['max_pressure']
     
     return lower_bound, upper_bound
 
@@ -164,8 +177,13 @@ def calculate_pressure_drop(flow_rate_m3h: float,
     --------
     float : Pressure drop in Pa (positive value)
     """
+    # For specific membrane models, determine if it's seawater or brackish based on prefix
+    effective_type = membrane_type
+    if membrane_type not in MEMBRANE_PROPERTIES:
+        effective_type = 'seawater' if membrane_type.startswith('SW') else 'brackish'
+
     pressure_drop_key = f'pressure_drop_stage{stage}'
-    default_drops = MEMBRANE_PROPERTIES[membrane_type]
+    default_drops = MEMBRANE_PROPERTIES[effective_type]
     
     if pressure_drop_key in default_drops:
         return default_drops[pressure_drop_key]

@@ -146,7 +146,7 @@ def _run_simulation_in_subprocess(sim_input: Dict[str, Any]) -> Dict[str, Any]:
 async def optimize_ro_configuration(
     feed_flow_m3h: float,
     water_recovery_fraction: float,
-    membrane_type: str = "brackish",
+    membrane_model: str,
     allow_recycle: bool = True,
     max_recycle_ratio: float = 0.9,
     flux_targets_lmh: Optional[str] = None,
@@ -161,7 +161,7 @@ async def optimize_ro_configuration(
     Args:
         feed_flow_m3h: Feed flow rate in m³/h
         water_recovery_fraction: Target water recovery as fraction (0-1)
-        membrane_type: Type of membrane ("brackish" or "seawater")
+        membrane_model: Specific membrane model (e.g., 'BW30_PRO_400', 'SW30HRLE_440')
         allow_recycle: Whether to allow concentrate recycle for high recovery
         max_recycle_ratio: Maximum allowed recycle ratio (0-1)
         flux_targets_lmh: Optional flux targets in LMH. Accepts:
@@ -182,7 +182,7 @@ async def optimize_ro_configuration(
         config = await optimize_ro_configuration(
             feed_flow_m3h=100,
             water_recovery_fraction=0.75,
-            membrane_type="brackish"
+            membrane_model="BW30_PRO_400"
         )
         
         # Custom flux targets
@@ -198,7 +198,7 @@ async def optimize_ro_configuration(
     request_params = {
         "feed_flow_m3h": feed_flow_m3h,
         "water_recovery_fraction": water_recovery_fraction,
-        "membrane_type": membrane_type,
+        "membrane_model": membrane_model,
         "allow_recycle": allow_recycle,
         "max_recycle_ratio": max_recycle_ratio,
         "flux_targets_lmh": flux_targets_lmh,
@@ -210,7 +210,7 @@ async def optimize_ro_configuration(
         parsed_flux_targets, validated_flux_tolerance = validate_optimize_ro_inputs(
             feed_flow_m3h=feed_flow_m3h,
             water_recovery_fraction=water_recovery_fraction,
-            membrane_type=membrane_type,
+            membrane_model=membrane_model,
             allow_recycle=allow_recycle,
             max_recycle_ratio=max_recycle_ratio,
             flux_targets_lmh=flux_targets_lmh,
@@ -219,18 +219,18 @@ async def optimize_ro_configuration(
         
         # Log the request
         logger.info(f"Optimizing RO configuration: {feed_flow_m3h} m³/h, "
-                   f"{water_recovery_fraction*100:.0f}% recovery, {membrane_type}")
+                   f"{water_recovery_fraction*100:.0f}% recovery, {membrane_model}")
         
         # Note: Feed salinity is NOT needed for configuration optimization
         # We use a placeholder value for internal calculations
-        placeholder_salinity = 5000 if membrane_type == "brackish" else 35000
+        placeholder_salinity = 5000 if not membrane_model.startswith('SW') else 35000
         
         # Call the optimization function - now returns all viable configurations
         configurations = optimize_vessel_array_configuration(
             feed_flow_m3h=feed_flow_m3h,
             target_recovery=water_recovery_fraction,
             feed_salinity_ppm=placeholder_salinity,
-            membrane_type=membrane_type,
+            membrane_model=membrane_model,
             allow_recycle=allow_recycle,
             max_recycle_ratio=max_recycle_ratio,
             flux_targets_lmh=parsed_flux_targets,
@@ -242,7 +242,7 @@ async def optimize_ro_configuration(
             configurations=configurations,
             feed_flow_m3h=feed_flow_m3h,
             target_recovery=water_recovery_fraction,
-            membrane_type=membrane_type
+            membrane_model=membrane_model
         )
         
         # Add warnings if no configuration met the target
@@ -271,217 +271,8 @@ async def optimize_ro_configuration(
         return format_error_response(e, request_params)
 
 
-@mcp.tool()
-async def simulate_ro_system(
-    configuration: Dict[str, Any],
-    feed_salinity_ppm: float,
-    feed_ion_composition: str,
-    feed_temperature_c: float = 25.0,
-    membrane_type: str = "brackish",
-    membrane_properties: Optional[Dict[str, float]] = None,
-    optimize_pumps: bool = True,
-    ctx: Context = None
-) -> Dict[str, Any]:
-    """
-    Run WaterTAP simulation for the specified RO configuration using MCAS property package.
-    
-    This tool executes a direct Python simulation that creates a WaterTAP model
-    with detailed ion modeling, runs the simulation, and returns complete results.
-    Results are cached using deterministic run IDs for idempotency.
-    
-    Args:
-        configuration: Output from optimize_ro_configuration tool
-        feed_salinity_ppm: Feed water salinity in ppm
-        feed_ion_composition: Required JSON string of ion concentrations in mg/L
-                             e.g., '{"Na+": 1200, "Cl-": 2100, "Ca2+": 120}'
-        feed_temperature_c: Feed temperature in Celsius (default 25°C)
-        membrane_type: Type of membrane ("brackish" or "seawater")
-        membrane_properties: Optional custom membrane properties
-        optimize_pumps: Whether to optimize pump pressures to match recovery targets exactly (default True)
-    
-    Returns:
-        Dictionary containing:
-        - status: "success" indicating simulation completed successfully  
-        - results: Complete simulation results including performance, economics, etc.
-        - message: Status message with execution time
-        - artifact_dir: Path to artifact directory for reproducibility
-    
-    Note:
-        This tool uses deterministic run IDs based on inputs for caching.
-        Typical execution time is 20-30 seconds for standard configurations.
-    
-    Example:
-        ```python
-        # Run complete MCAS simulation
-        result = await simulate_ro_system(
-            configuration=config_from_optimization,
-            feed_salinity_ppm=5000,
-            feed_temperature_c=25.0,
-            feed_ion_composition='{"Na+": 1200, "Ca2+": 120, "Mg2+": 60, "Cl-": 2100, "SO4-2": 200, "HCO3-": 150}'
-        )
-        # Returns complete results immediately
-        print(result['results']['performance']['system_recovery'])
-        ```
-    """
-    try:
-        # Validate inputs first
-        if not isinstance(configuration, dict):
-            raise ValueError("configuration must be a dictionary from optimize_ro_configuration")
-        
-        if "stages" not in configuration:
-            raise ValueError("configuration must contain 'stages' key")
-        
-        validate_salinity(feed_salinity_ppm, "feed_salinity_ppm")
-        
-        if not 0 < feed_temperature_c < 100:
-            raise ValueError(f"Temperature {feed_temperature_c}°C is outside reasonable range")
-        
-        if membrane_type not in ["brackish", "seawater"]:
-            raise ValueError(f"Invalid membrane_type: {membrane_type}")
-        
-        # Parse ion composition (required)
-        try:
-            parsed_ion_composition = json.loads(feed_ion_composition)
-            # Validate it's a dictionary with numeric values
-            if not isinstance(parsed_ion_composition, dict):
-                raise ValueError("Ion composition must be a JSON object")
-            for ion, conc in parsed_ion_composition.items():
-                if not isinstance(conc, (int, float)) or conc < 0:
-                    raise ValueError(f"Invalid concentration for {ion}: {conc}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
-        
-        # Create input payload for deterministic run_id
-        input_payload = {
-            "configuration": configuration,
-            "feed_salinity_ppm": feed_salinity_ppm,
-            "feed_ion_composition": parsed_ion_composition,  # Use parsed dict, not string
-            "feed_temperature_c": feed_temperature_c,
-            "membrane_type": membrane_type,
-            "membrane_properties": membrane_properties or {},
-            "optimize_pumps": optimize_pumps
-        }
-        
-        # Generate deterministic run ID
-        run_id = deterministic_run_id(
-            tool_name="simulate_ro_system",
-            input_payload=input_payload
-        )
-        
-        logger.info(f"Generated run_id: {run_id}")
-        
-        # Check for existing results (idempotency)
-        existing_results = check_existing_results(run_id)
-        if existing_results:
-            logger.info(f"Found cached results for run_id: {run_id}")
-            artifact_dir = artifacts_root() / run_id
-            return {
-                "status": "success",
-                "message": "Using cached results",
-                "results": existing_results,
-                "artifact_dir": str(artifact_dir),
-                "run_id": run_id,
-                "cached": True
-            }
-        
-        # Log the request
-        logger.info(f"Starting simulation for {configuration.get('array_notation', 'unknown')} array")
-        logger.info(f"Run ID: {run_id}")
-        
-        # Start timing
-        start_time = time.time()
-        
-        # Run simulation in isolated child process to keep MCP STDIO safe
-        logger.info("Running simulation in child process...")
-        sim_input = {
-            "configuration": configuration,
-            "feed_salinity_ppm": feed_salinity_ppm,
-            "feed_ion_composition": parsed_ion_composition,
-            "feed_temperature_c": feed_temperature_c,
-            "membrane_type": membrane_type,
-            "membrane_properties": membrane_properties,
-            "optimize_pumps": optimize_pumps,
-            "initialization_strategy": "sequential",
-            # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
-        }
-
-        simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
-        
-        execution_time = time.time() - start_time
-        logger.info(f"Simulation completed in {execution_time:.1f} seconds")
-        
-        # Check if simulation was successful
-        if simulation_results["status"] != "success":
-            logger.error(f"Simulation failed: {simulation_results.get('message', 'Unknown error')}")
-            return {
-                "status": "error",
-                "message": simulation_results.get("message", "Simulation failed"),
-                "error_details": simulation_results,
-                "execution_time_seconds": execution_time,
-                "run_id": run_id
-            }
-        
-        # Capture execution context
-        context = capture_context(
-            tool_name="simulate_ro_system",
-            run_id=run_id
-        )
-        
-        # Prepare warnings list
-        warnings = []
-        if "trace_ion_info" in simulation_results:
-            warnings.append(f"Trace ion handling applied: {simulation_results['trace_ion_info']['handling_strategy']}")
-        if "warnings" in simulation_results:
-            warnings.extend(simulation_results["warnings"])
-        
-        # Write artifacts
-        logger.info(f"Writing artifacts to {run_id}/")
-        artifact_dir = write_artifacts(
-            run_id=run_id,
-            tool_name="simulate_ro_system",
-            input_data=input_payload,
-            results_data=simulation_results,
-            context=context,
-            warnings=warnings if warnings else None
-        )
-        
-        # Add execution metadata to results
-        simulation_results["execution_info"] = {
-            "execution_time_seconds": execution_time,
-            "timestamp": datetime.now().isoformat(),
-            "run_id": run_id
-        }
-        
-        logger.info(f"Simulation completed successfully in {execution_time:.1f} seconds")
-        
-        return {
-            "status": "success",
-            "message": f"Simulation completed successfully in {execution_time:.1f} seconds",
-            "results": simulation_results,
-            "artifact_dir": str(artifact_dir),
-            "run_id": run_id,
-            "cached": False
-        }
-        
-    except ImportError as e:
-        logger.error(f"Import error: {str(e)}")
-        return {
-            "status": "error",
-            "error": "Dependencies not installed",
-            "message": f"Missing dependency: {str(e)}"
-        }
-    except Exception as e:
-        logger.error(f"Error in simulate_ro_system: {str(e)}")
-        return {
-            "status": "error",
-            "error": str(type(e).__name__),
-            "message": str(e)
-        }
-
-
-# Removed check_simulation_status and get_simulation_results tools
-# With the improved single-tool architecture, simulate_ro_system returns complete results
-# These tools are no longer needed and add unnecessary complexity
+# Removed simulate_ro_system v1 - clients must use simulate_ro_system_v2
+# v1 had issues with the new membrane catalog system and ion-specific B values
 
 
 @mcp.tool()
@@ -489,8 +280,8 @@ async def simulate_ro_system_v2(
     configuration: Dict[str, Any],
     feed_salinity_ppm: float,
     feed_ion_composition: str,
+    membrane_model: str,
     feed_temperature_c: float = 25.0,
-    membrane_type: str = "brackish",
     economic_params: Optional[Dict[str, Any]] = None,
     chemical_dosing: Optional[Dict[str, Any]] = None,
     optimization_mode: bool = False,
@@ -507,7 +298,7 @@ async def simulate_ro_system_v2(
         feed_salinity_ppm: Feed water salinity in ppm
         feed_ion_composition: JSON string of ion concentrations in mg/L
         feed_temperature_c: Feed temperature in Celsius (default 25°C)
-        membrane_type: Type of membrane ("brackish" or "seawater")
+        membrane_model: Specific membrane model (e.g., 'BW30_PRO_400', 'SW30HRLE_440')
         economic_params: Economic parameters (uses WaterTAP defaults if None)
             - wacc: Weighted average cost of capital (default 0.093)
             - plant_lifetime_years: Plant lifetime (default 30)
@@ -542,7 +333,7 @@ async def simulate_ro_system_v2(
             configuration=config,
             feed_salinity_ppm=35000,
             feed_ion_composition=seawater_ions,
-            membrane_type="seawater",
+            membrane_model="SW30HRLE_440",
             economic_params={"wacc": 0.06, "electricity_cost_usd_kwh": 0.10}
         )
         
@@ -576,8 +367,10 @@ async def simulate_ro_system_v2(
         if not 0 < feed_temperature_c < 100:
             raise ValueError(f"Temperature {feed_temperature_c}°C is outside reasonable range")
         
-        if membrane_type not in ["brackish", "seawater"]:
-            raise ValueError(f"Invalid membrane_type: {membrane_type}")
+        # Validate membrane model exists (could be checked against catalog)
+        # For now, just ensure it's provided
+        if not membrane_model:
+            raise ValueError("membrane_model is required")
         
         # Parse ion composition
         try:
@@ -591,9 +384,12 @@ async def simulate_ro_system_v2(
             raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
         
         # Apply defaults and validate
-        economic_params = apply_economic_defaults(economic_params, membrane_type)
+        economic_params = apply_economic_defaults(economic_params, 'brackish' if not membrane_model.startswith('SW') else 'seawater')
+        config_feed_flow = configuration.get("feed_flow_m3h")
+        if config_feed_flow is not None and "feed_flow_m3h" not in economic_params:
+            economic_params["feed_flow_m3h"] = config_feed_flow
         chemical_dosing = apply_dosing_defaults(chemical_dosing)
-        
+
         validate_economic_params(economic_params)
         validate_dosing_params(chemical_dosing)
         
@@ -603,7 +399,7 @@ async def simulate_ro_system_v2(
             "feed_salinity_ppm": feed_salinity_ppm,
             "feed_ion_composition": parsed_ion_composition,
             "feed_temperature_c": feed_temperature_c,
-            "membrane_type": membrane_type,
+            "membrane_model": membrane_model,
             "economic_params": economic_params,
             "chemical_dosing": chemical_dosing,
             "optimization_mode": optimization_mode,
@@ -671,13 +467,10 @@ async def simulate_ro_system_v2(
             logger.warning("Optimization mode requested but not supported via MCP server")
             logger.warning("Model handles cannot persist across subprocess boundaries")
             logger.warning("Use direct Python API (utils.simulate_ro_v2) for optimization mode")
-            # Return error instead of broken handle
             return {
-                "error": "Optimization mode not supported via MCP server. Use direct Python API instead.",
-                "status": "success",
-                "message": "Model built for optimization",
-                "model_handle": simulation_results.get("model_handle"),
-                "metadata": simulation_results.get("metadata"),
+                "status": "error",
+                "error": "OptimizationModeUnsupported",
+                "message": "Optimization mode is not supported via the MCP stdio server. Use utils.simulate_ro_v2 directly.",
                 "execution_time_seconds": execution_time,
                 "run_id": run_id,
                 "api_version": "v2"
@@ -795,7 +588,8 @@ def main():
     # Log available tools
     logger.info("Available tools:")
     logger.info("  - optimize_ro_configuration: Generate optimal RO vessel array configurations")
-    logger.info("  - simulate_ro_system: Run WaterTAP simulation and return complete results")
+    logger.info("  - simulate_ro_system_v2: Run WaterTAP simulation with detailed economics")
+    logger.info("  - get_ro_defaults: Get default economic and chemical parameters")
     
     # Run the server
     mcp.run()

@@ -131,17 +131,17 @@ def format_optimization_response(
     configurations: List[Dict[str, Any]],
     feed_flow_m3h: float,
     target_recovery: float,
-    membrane_type: str
+    membrane_model: str
 ) -> Dict[str, Any]:
     """
     Format the complete optimization response.
-    
+
     Args:
         configurations: List of configurations from optimizer
         feed_flow_m3h: Feed flow rate
         target_recovery: Target recovery fraction
-        membrane_type: Type of membrane
-        
+        membrane_model: Membrane model
+
     Returns:
         Formatted response dictionary
     """
@@ -151,7 +151,7 @@ def format_optimization_response(
         "summary": {
             "feed_flow_m3h": feed_flow_m3h,
             "target_recovery_percent": target_recovery * 100,
-            "membrane_type": membrane_type,
+            "membrane_model": membrane_model,
             "configurations_found": len(configurations)
         }
     }

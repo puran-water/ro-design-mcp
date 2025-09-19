@@ -10,15 +10,24 @@ Model Context Protocol server for reverse osmosis system design optimization and
 
 ## Overview
 
-This MCP server provides two primary tools for RO system design:
+This MCP server provides three primary tools for RO system design:
 
 1. **optimize_ro_configuration**: Generates vessel array configurations for specified recovery targets
 2. **simulate_ro_system_v2**: Performs detailed WaterTAP simulations with economic analysis
+3. **get_ro_defaults**: Returns default economic and chemical dosing parameters
 
 ## Technical Capabilities
 
+### Membrane Catalog (NEW v2.0)
+- **67 manufacturer-specific membrane models** from FilmTec/DuPont catalog
+- Models include BW30_PRO_400, BW30XFRLE_400, SW30HRLE_440, and many more
+- **Ion-specific rejection modeling** based on diffusivity and charge effects
+- Temperature-corrected permeability using Arrhenius equations
+- Feed spacer profiles for accurate hydraulic modeling
+
 ### Configuration Optimization
 - Generates all viable 1-3 stage vessel array configurations
+- Supports specific membrane models (not just generic "brackish"/"seawater")
 - Automatic concentrate recycle calculation for high recovery (up to 95%)
 - Flux balancing across stages with configurable tolerance
 - Minimum concentrate flow constraints per vessel type
@@ -83,7 +92,9 @@ Generates vessel array configurations for target recovery.
 Parameters:
 - `feed_flow_m3h` (float): Feed flow rate in m³/h
 - `water_recovery_fraction` (float): Target recovery (0-1)
-- `membrane_type` (string): "brackish" or "seawater"
+- `membrane_model` (string): Specific membrane model (e.g., "BW30_PRO_400", "SW30HRLE_440")
+- `allow_recycle` (bool, optional): Allow concentrate recycle for high recovery
+- `max_recycle_ratio` (float, optional): Maximum recycle ratio (0-1)
 - `flux_targets_lmh` (string, optional): JSON array of per-stage flux targets
 - `flux_tolerance` (float, optional): Flux tolerance fraction
 
@@ -96,8 +107,8 @@ Parameters:
 - `configuration` (object): Output from optimize_ro_configuration
 - `feed_salinity_ppm` (float): Feed water salinity in ppm
 - `feed_ion_composition` (string): JSON object of ion concentrations in mg/L
-- `feed_temperature_c` (float): Feed temperature in Celsius
-- `membrane_type` (string): "brackish" or "seawater"
+- `membrane_model` (string): Specific membrane model (must match configuration)
+- `feed_temperature_c` (float, optional): Feed temperature in Celsius (default 25°C)
 - `economic_params` (object, optional): Economic parameters
 - `chemical_dosing` (object, optional): Chemical dosing parameters
 
@@ -105,17 +116,20 @@ Returns: Comprehensive simulation results including performance, economics, and 
 
 ## API Version History
 
-### v2 (Current)
+### v2.0 (Current - 2025-09-19)
+- **Membrane Catalog System**: 67 manufacturer-specific membrane models
+- **Ion-Specific B Values**: Physically-based rejection modeling per ion
+- **Removed v1 API**: Only simulate_ro_system_v2 available
+- **Breaking Change**: `membrane_type` → `membrane_model` parameter
+- Temperature corrections and spacer profiles
 - Direct MCAS multi-ion modeling (13+ species)
 - WaterTAPCostingDetailed for transparent economics
 - Physical constraint bounds to prevent unrealistic solutions
-- Full ion-specific rejection tracking
-- Concentrate recycle system fixes
 
-### v1 (Deprecated)
+### v1.0 (Deprecated)
+- Generic "brackish" and "seawater" membrane types only
 - Basic WaterTAPCosting
-- Limited to NaCl equivalent modeling
-- No physical constraint enforcement
+- Simple NaCl-based rejection modeling
 
 ## Technical Implementation
 

@@ -1,0 +1,63 @@
+# RO Membrane Feed Spacer Profiles
+# This file defines standard feed spacer configurations used by different membrane models
+# All values are in SI units
+
+spacer_profiles:
+  # FilmTec Standard Spacers
+  filmtec_28mil:
+    channel_height: 7.1e-4  # m (28 mil = 0.71 mm)
+    spacer_porosity: 0.86   # Higher porosity, lower pressure drop
+    friction_factor: 6.5     # Darcy friction factor
+    description: "Standard 28 mil spacer for general applications"
+
+  filmtec_31mil:  # Most common standard spacer
+    channel_height: 7.9e-4  # m (31 mil = 0.79 mm)
+    spacer_porosity: 0.85   # Standard porosity
+    friction_factor: 6.8     # Standard friction
+    description: "Standard 31 mil spacer - most common configuration"
+
+  filmtec_34mil:  # Low differential pressure
+    channel_height: 8.6e-4  # m (34 mil = 0.86 mm)
+    spacer_porosity: 0.84   # Slightly lower porosity
+    friction_factor: 7.0     # Higher friction due to design
+    description: "34 mil low DP spacer for fouling-prone feeds"
+
+  filmtec_46mil:  # Ultra-low differential pressure
+    channel_height: 1.17e-3  # m (46 mil = 1.17 mm)
+    spacer_porosity: 0.83    # Lower porosity, more structural support
+    friction_factor: 7.5      # Highest friction
+    description: "46 mil ultra-low DP spacer for high fouling applications"
+
+  # Specialty Spacers
+  filmtec_65mil:  # Extra thick for extreme fouling
+    channel_height: 1.65e-3  # m (65 mil = 1.65 mm)
+    spacer_porosity: 0.82    # Lower porosity
+    friction_factor: 8.0      # High friction
+    description: "65 mil spacer for extreme fouling conditions"
+
+  # Nanofiltration spacers (typically thinner)
+  nf_20mil:
+    channel_height: 5.1e-4   # m (20 mil = 0.51 mm)
+    spacer_porosity: 0.87    # Higher porosity for lower pressure
+    friction_factor: 6.0      # Lower friction
+    description: "20 mil spacer for NF membranes"
+
+  # Default fallback
+  default:
+    channel_height: 7.9e-4   # m (31 mil standard)
+    spacer_porosity: 0.85
+    friction_factor: 6.8
+    description: "Default spacer configuration when not specified"
+
+# Spacer selection guidelines:
+# - 28 mil: Standard for clean feeds, maximum permeate production
+# - 31 mil: Most common, good balance of flow and fouling resistance
+# - 34 mil: Low DP variant, reduces pressure drop by ~15-20%
+# - 46 mil: Ultra-low DP, for high TSS or biological fouling
+# - 65 mil: Extreme fouling conditions, pretreatment issues
+
+# Note: Actual spacer performance depends on:
+# - Feed water quality (TSS, turbidity, biological activity)
+# - Pretreatment effectiveness
+# - Operating flux and recovery
+# - Cleaning frequency
