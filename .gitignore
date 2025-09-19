@@ -138,3 +138,19 @@ artifacts/
 
 # Local configuration
 local_config.yaml
+
+# Development and testing files
+test_*.py
+test_bugs.py
+MCP_Testing_Plan.md
+server_backup*.py
+membrane_properties.csv
+research/
+.codex/
+=
+
+# Claude IDE settings
+.claude/
+
+# Lists and utility scripts
+utils/list_membranes.py
