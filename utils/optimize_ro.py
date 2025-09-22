@@ -20,6 +20,7 @@ from .constants import (
     DEFAULT_FLUX_TOLERANCE,
     DEFAULT_SALT_PASSAGE,
 )
+from .membrane_properties_handler import get_membrane_from_catalog
 
 # Set up logging for this module
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def optimize_vessel_array_configuration(
     feed_salinity_ppm,
     stage_flux_targets_lmh=None,
     min_concentrate_flow_per_vessel_m3h=None,
-    element_area_m2=37.16,  # 400 ft²
+    element_area_m2=None,  # Will be looked up from catalog if not provided
     elements_per_vessel=7,
     max_stages=3,  # LIMITED TO 3 STAGES
     membrane_model='BW30_PRO_400',
@@ -113,7 +114,24 @@ def optimize_vessel_array_configuration(
         stage_flux_targets_lmh.append(stage_flux_targets_lmh[-1])
     while len(min_concentrate_flow_per_vessel_m3h) < max_stages:
         min_concentrate_flow_per_vessel_m3h.append(min_concentrate_flow_per_vessel_m3h[-1])
-    
+
+    # Get element area from catalog if not provided
+    if element_area_m2 is None:
+        try:
+            catalog_info = get_membrane_from_catalog(membrane_model)
+            element_area_m2 = catalog_info.get('active_area_m2')
+            if element_area_m2 is None:
+                raise ValueError(f"Membrane {membrane_model} does not have active_area_m2 in catalog")
+            logger.debug(f"Using element area {element_area_m2} m² from catalog for {membrane_model}")
+        except Exception as e:
+            # Fallback to reasonable defaults based on membrane type
+            if 'SW' in membrane_model.upper() or 'SEA' in membrane_model.upper():
+                element_area_m2 = 34.0  # Typical for seawater membranes (365 ft²)
+            else:
+                element_area_m2 = 37.16  # Typical for brackish water membranes (400 ft²)
+            logger.warning(f"Could not get element area from catalog for {membrane_model}: {e}")
+            logger.info(f"Using default element area: {element_area_m2} m²")
+
     vessel_area = element_area_m2 * elements_per_vessel
     
     # FIXED: Tighter convergence tolerance for recycle optimization

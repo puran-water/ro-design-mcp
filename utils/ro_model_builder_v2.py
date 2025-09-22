@@ -51,7 +51,10 @@ from watertap.unit_models.pressure_exchanger import PressureExchanger
 from watertap.costing.unit_models.energy_recovery_device import cost_pressure_exchanger_erd
 
 # Import membrane properties handler
-from .membrane_properties_handler import get_membrane_properties_mcas
+from .membrane_properties_handler import (
+    get_membrane_properties_mcas,
+    get_membrane_from_catalog,
+)
 from .mcas_builder import estimate_solution_density
 from .ro_initialization import calculate_concentrate_tds
 from .logging_config import get_configured_logger
@@ -320,6 +323,24 @@ def build_ro_model_v2(
 
             # Set TDS-aware bounds and initial values for water flux
             if hasattr(ro, 'flux_mass_phase_comp'):
+                stage_data = config_data['stages'][i-1]
+                stage_area_m2 = stage_data.get('membrane_area_m2', 0.0)
+                expected_flux_lmh = None
+                if stage_area_m2 and stage_area_m2 > 0:
+                    permeate_flow_m3h = stage_data.get('permeate_flow_m3h')
+                    if permeate_flow_m3h is not None:
+                        expected_flux_lmh = (permeate_flow_m3h / stage_area_m2) * 1000.0
+                    else:
+                        stage_rec = stage_data.get('stage_recovery')
+                        if stage_rec is not None:
+                            stage_feed_flow_m3h = stage_data.get('feed_flow_m3h')
+                            if stage_feed_flow_m3h is None and i == 1:
+                                stage_feed_flow_m3h = config_data.get('feed_flow_m3h')
+                            if stage_feed_flow_m3h:
+                                expected_flux_lmh = (
+                                    stage_feed_flow_m3h * stage_rec * 1000.0 / stage_area_m2
+                                )
+
                 # Initial guess based on A and TDS-appropriate pressure
                 try:
                     A_w = value(ro.A_comp[0, 'H2O'])
@@ -359,11 +380,23 @@ def build_ro_model_v2(
                 # For later stages, reduce maximum flux by 10% per stage
                 if i > 1:
                     jw_max_lmh *= (0.9 ** (i - 1))
-                
+
+                if expected_flux_lmh is not None:
+                    design_upper = expected_flux_lmh * 1.2 + 5.0
+                    jw_max_lmh = max(jw_max_lmh, design_upper)
+                    jw_max_lmh = min(jw_max_lmh, 120.0)
+                    jw_min_lmh = min(
+                        jw_min_lmh,
+                        max(0.0, expected_flux_lmh * 0.2)
+                    )
+
+                if jw_min_lmh >= jw_max_lmh:
+                    jw_min_lmh = max(0.0, jw_max_lmh * 0.5)
+
                 # Convert LMH to kg/m²/s
                 jw_min = jw_min_lmh * 2.778e-4
                 jw_max = jw_max_lmh * 2.778e-4
-                
+
                 # Calculate initial value
                 Jw_init_mass = max(jw_min, min(jw_max, A_w * typical_dp * rho_water))
 
@@ -372,8 +405,16 @@ def build_ro_model_v2(
                     ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].setub(jw_max)
                     ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O'].set_value(Jw_init_mass)
                 
-                logger.debug(f"Stage {i}: Water flux bounds = [{jw_min_lmh:.1f}, {jw_max_lmh:.1f}] LMH, "
-                           f"initial = {Jw_init_mass:.2e} kg/m²/s")
+                if expected_flux_lmh is not None:
+                    logger.debug(
+                        f"Stage {i}: Water flux bounds = [{jw_min_lmh:.1f}, {jw_max_lmh:.1f}] LMH, "
+                        f"expected ≈ {expected_flux_lmh:.1f} LMH, initial = {Jw_init_mass:.2e} kg/m²/s"
+                    )
+                else:
+                    logger.debug(
+                        f"Stage {i}: Water flux bounds = [{jw_min_lmh:.1f}, {jw_max_lmh:.1f}] LMH, "
+                        f"initial = {Jw_init_mass:.2e} kg/m²/s"
+                    )
 
                 # Solute flux bounds and initials
                 for comp in solute_list:
@@ -695,10 +736,56 @@ def _build_ro_stages(m, n_stages, config_data, has_recycle, will_have_erd=False)
             membrane_properties=None,
             solute_list=solute_list
         )
-        
+
+        # Determine membrane area for this stage. If the configuration did not
+        # populate an explicit area, fall back to catalog data using the
+        # membrane model and vessel count so downstream flux bounds can use
+        # physically consistent limits.
+        stage_area_m2 = stage_data.get('membrane_area_m2')
+        membrane_model_name = (
+            stage_data.get('membrane_model')
+            or config_data.get('membrane_model')
+            or m.membrane_type
+        )
+
+        if stage_area_m2 is None:
+            element_area_m2 = None
+            try:
+                catalog_info = get_membrane_from_catalog(membrane_model_name)
+                element_area_m2 = catalog_info.get('active_area_m2')
+            except Exception as _e:
+                logger.debug(
+                    f"Stage {i}: Could not read catalog area for {membrane_model_name}: {_e}"
+                )
+
+            if element_area_m2 is None:
+                # Sensible defaults for 8" spiral-wound elements
+                element_area_m2 = 34.0 if m.membrane_type == 'seawater' else 37.0
+
+            n_vessels = stage_data.get('n_vessels') or 0
+            elements_per_vessel = stage_data.get('elements_per_vessel') or 0
+            estimated_area = n_vessels * elements_per_vessel * element_area_m2
+
+            if estimated_area <= 0:
+                estimated_area = 1000.0  # conservative fallback
+                logger.warning(f"Stage {i}: Invalid estimated area, using fallback {estimated_area} m²")
+
+            stage_area_m2 = estimated_area
+            stage_data['membrane_area_m2'] = stage_area_m2
+            logger.info(f"Stage {i}: Calculated membrane area = {stage_area_m2:.1f} m² "
+                       f"({n_vessels} vessels × {elements_per_vessel} elements × {element_area_m2:.1f} m²/element)")
+
+        # Validate membrane area is reasonable
+        if stage_area_m2 <= 0:
+            raise ValueError(f"Stage {i}: Invalid membrane area {stage_area_m2} m²")
+        if stage_area_m2 > 100000:
+            logger.warning(f"Stage {i}: Unusually large membrane area {stage_area_m2} m²")
+
+        ro.area.fix(stage_area_m2)
+
         # Set A_comp for water
         ro.A_comp[0, 'H2O'].fix(membrane_props['A_w'])
-        
+
         # Set B_comp for each solute
         for comp in solute_list:
             if comp in membrane_props['B_comp']:
@@ -710,8 +797,7 @@ def _build_ro_stages(m, n_stages, config_data, has_recycle, will_have_erd=False)
                 else:
                     ro.B_comp[0, comp].fix(1e-8)
         
-        # Set area, pressure drop, permeate pressure
-        ro.area.fix(stage_data.get('membrane_area_m2', 1000))
+        # Set pressure drop and permeate pressure
         ro.deltaP.fix(-0.5 * pyunits.bar)
         ro.permeate.pressure[0].fix(1 * pyunits.atm)
 
