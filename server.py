@@ -153,14 +153,17 @@ async def optimize_ro_configuration(
     flux_tolerance: Optional[float] = None,
     feed_ion_composition: Optional[str] = None,
     feed_temperature_c: float = 25.0,
-    feed_ph: float = 7.5
+    feed_ph: float = 7.5,
+    target_ph: Optional[float] = None,
+    auto_ph_sweep: bool = True
 ) -> Dict[str, Any]:
     """
     Generate optimal RO vessel array configuration based on flow and recovery.
-    
+
     This tool determines ALL viable vessel array configurations (1, 2, and 3 stages)
     to achieve target recovery while meeting flux and concentrate flow constraints.
-    
+    Optionally optimizes pH for maximum recovery.
+
     Args:
         feed_flow_m3h: Feed flow rate in m³/h
         water_recovery_fraction: Target water recovery as fraction (0-1)
@@ -175,6 +178,10 @@ async def optimize_ro_configuration(
                              for sustainable recovery calculation
         feed_temperature_c: Feed temperature in Celsius (default 25°C)
         feed_ph: Feed pH value (default 7.5)
+        target_ph: Optional target pH for operation. If specified, will calculate
+                   sustainable recovery at this pH and recommend chemicals
+        auto_ph_sweep: If True and target recovery isn't achievable at target_ph,
+                       will sweep pH range to find optimal pH (default True)
 
     Returns:
         Dictionary containing:
@@ -281,6 +288,8 @@ async def optimize_ro_configuration(
                     validate_water_chemistry_params,
                     create_feed_water_chemistry
                 )
+                from utils.ph_recovery_optimizer import pHRecoveryOptimizer
+                import numpy as np
 
                 # Parse and validate ion composition
                 ion_comp = parse_and_validate_ion_composition(feed_ion_composition)
@@ -288,14 +297,125 @@ async def optimize_ro_configuration(
                 # Validate temperature and pH
                 temp_c, ph = validate_water_chemistry_params(feed_temperature_c, feed_ph)
 
-                # Calculate sustainable recovery
+                # If target_ph specified, use it for calculations
+                if target_ph is not None:
+                    ph_for_calc = target_ph
+                    logger.info(f"Using target pH {target_ph} for recovery calculations")
+                else:
+                    ph_for_calc = ph
+
+                # Calculate sustainable recovery at specified pH
                 sustainable = calculate_sustainable_recovery(
                     ion_composition_mg_l=ion_comp,
                     temperature_c=temp_c,
                     pressure_bar=1.0,  # Standard pressure
-                    ph=ph,
+                    ph=ph_for_calc,
                     with_antiscalant=True  # Assume antiscalant use
                 )
+
+                # pH optimization if target_ph specified or auto_sweep needed
+                ph_optimization = None
+                if target_ph is not None or (auto_ph_sweep and water_recovery_fraction > sustainable["max_recovery"]):
+                    ph_optimizer = pHRecoveryOptimizer()
+
+                    if target_ph is not None:
+                        # Check if target recovery achievable at target pH
+                        ph_result = ph_optimizer.test_recovery_at_pH(
+                            feed_composition=ion_comp,
+                            target_recovery=water_recovery_fraction,
+                            target_ph=target_ph,
+                            temperature_c=temp_c,
+                            use_antiscalant=True
+                        )
+
+                        if not ph_result['achievable'] and auto_ph_sweep:
+                            # Perform full pH sweep to find optimal
+                            logger.info(f"Target recovery not achievable at pH {target_ph}, performing pH sweep")
+                            sweep_results = []
+
+                            for test_ph in np.arange(6.0, 10.5, 0.5):
+                                sweep_result = ph_optimizer.test_recovery_at_pH(
+                                    feed_composition=ion_comp,
+                                    target_recovery=water_recovery_fraction,
+                                    target_ph=test_ph,
+                                    temperature_c=temp_c,
+                                    use_antiscalant=True
+                                )
+
+                                # Calculate annual chemical cost
+                                chemical_costs = {'NaOH': 0.35, 'HCl': 0.17, 'H2SO4': 0.10}
+                                chemical_kg_year = (sweep_result.get('chemical_dose_mg_L', 0) *
+                                                  feed_flow_m3h * 8760 / 1000)
+                                annual_cost = chemical_kg_year * chemical_costs.get(
+                                    sweep_result.get('chemical_type', 'NaOH'), 0.35)
+
+                                sweep_results.append({
+                                    'pH': test_ph,
+                                    'achievable': sweep_result['achievable'],
+                                    'chemical_type': sweep_result.get('chemical_type'),
+                                    'dose_mg_L': sweep_result.get('chemical_dose_mg_L', 0),
+                                    'annual_cost_USD': annual_cost,
+                                    'limiting_factor': sweep_result.get('limiting_factor')
+                                })
+
+                            # Find optimal pH (achievable with minimum cost)
+                            achievable_options = [r for r in sweep_results if r['achievable']]
+                            if achievable_options:
+                                optimal = min(achievable_options, key=lambda x: x['annual_cost_USD'])
+                                ph_optimization = {
+                                    'target_not_achievable_at_pH': target_ph,
+                                    'recommended_pH': optimal['pH'],
+                                    'chemical_required': optimal['chemical_type'],
+                                    'dose_mg_L': optimal['dose_mg_L'],
+                                    'annual_cost_USD': optimal['annual_cost_USD'],
+                                    'sweep_results': sweep_results
+                                }
+                            else:
+                                ph_optimization = {
+                                    'target_not_achievable': True,
+                                    'message': f"Target recovery {water_recovery_fraction:.1%} not achievable in pH range 6-10",
+                                    'sweep_results': sweep_results
+                                }
+                        else:
+                            # Target pH results (achievable or not)
+                            ph_optimization = {
+                                'target_pH': target_ph,
+                                'achievable': ph_result['achievable'],
+                                'chemical_type': ph_result.get('chemical_type'),
+                                'dose_mg_L': ph_result.get('chemical_dose_mg_L', 0),
+                                'limiting_factor': ph_result.get('limiting_factor')
+                            }
+
+                    elif auto_ph_sweep and water_recovery_fraction > sustainable["max_recovery"]:
+                        # Auto sweep when target recovery exceeds sustainable at current pH
+                        logger.info("Target recovery exceeds sustainable recovery, finding optimal pH")
+                        ph_result = ph_optimizer.find_pH_for_target_recovery(
+                            feed_composition=ion_comp,
+                            target_recovery=water_recovery_fraction,
+                            temperature_c=temp_c,
+                            use_antiscalant=True,
+                            pH_range=(6.0, 10.0),
+                            pH_step=0.5
+                        )
+
+                        if ph_result['achievable']:
+                            chemical_costs = {'NaOH': 0.35, 'HCl': 0.17, 'H2SO4': 0.10}
+                            chemical_kg_year = ph_result.get('chemical_dose_mg_L', 0) * feed_flow_m3h * 8760 / 1000
+                            annual_cost = chemical_kg_year * chemical_costs.get(ph_result.get('chemical_type', 'NaOH'), 0.35)
+
+                            ph_optimization = {
+                                'optimal_pH_found': True,
+                                'optimal_pH': ph_result['optimal_pH'],
+                                'chemical_type': ph_result['chemical_type'],
+                                'dose_mg_L': ph_result['chemical_dose_mg_L'],
+                                'annual_cost_USD': annual_cost,
+                                'achieves_target_recovery': True
+                            }
+                        else:
+                            ph_optimization = {
+                                'optimal_pH_found': False,
+                                'message': f"Target recovery {water_recovery_fraction:.1%} not achievable even with pH adjustment"
+                            }
 
                 # Format sustainable recovery for display
                 sustainable_recovery_display = {

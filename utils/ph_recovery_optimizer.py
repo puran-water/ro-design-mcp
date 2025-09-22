@@ -93,13 +93,12 @@ class pHRecoveryOptimizer:
         # Test pH values in range
         for test_pH in np.arange(pH_range[0], pH_range[1] + pH_step, pH_step):
             # Calculate scaling at this pH and target recovery
-            # Using maintain_pH to keep pH constant during concentration
+            # Calculate scaling at this pH and target recovery
             scaling_result = self.client.calculate_scaling_potential(
                 feed_composition,
                 target_recovery,
                 temperature_c,
-                test_pH,
-                maintain_pH=True  # Critical: maintain pH during concentration
+                test_pH
             )
 
             # Check if all SI limits are met
@@ -223,6 +222,98 @@ class pHRecoveryOptimizer:
                 # High sulfate - use HCl only
                 dose_mg_L = moles_needed * 36500
                 return ("HCl", dose_mg_L)
+
+    def test_recovery_at_pH(
+        self,
+        feed_composition: Dict[str, float],
+        target_recovery: float,
+        target_ph: float,
+        temperature_c: float = 25.0,
+        use_antiscalant: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Test if target recovery is achievable at specific pH.
+
+        Args:
+            feed_composition: Ion concentrations in mg/L
+            target_recovery: Target recovery fraction (0-1)
+            target_ph: Specific pH to test
+            temperature_c: Temperature in Celsius
+            use_antiscalant: Whether to consider antiscalant effects
+
+        Returns:
+            Dict with achievability, chemical requirements, and limiting factors
+        """
+        # Define SI limits based on antiscalant use
+        if use_antiscalant:
+            si_limits = {
+                'Calcite': 2.5,
+                'Aragonite': 2.5,
+                'Gypsum': 2.3,
+                'Barite': 1.5,
+                'Celestite': 1.0,
+                'Fluorite': 0.5,
+                'Silica_am': 1.3,
+                'Quartz': -0.3,
+                'Brucite': 0.5,
+            }
+        else:
+            si_limits = {
+                'Calcite': 0.3,
+                'Aragonite': 0.3,
+                'Gypsum': 0.0,
+                'Barite': 0.0,
+                'Celestite': -0.3,
+                'Fluorite': -0.3,
+                'Silica_am': 0.7,
+                'Quartz': -0.7,
+                'Brucite': 0.0,
+            }
+
+        # Get baseline pH
+        baseline_result = self.client.calculate_scaling_potential(
+            feed_composition, 0.0, temperature_c, 7.0
+        )
+        baseline_pH = baseline_result.get('actual_ph', 7.0)
+
+        # Calculate scaling at target pH and recovery
+        scaling_result = self.client.calculate_scaling_potential(
+            feed_composition,
+            target_recovery,
+            temperature_c,
+            target_ph
+        )
+
+        # Check SI limits
+        achievable = True
+        limiting_factor = None
+        critical_si = {}
+
+        for mineral, si in scaling_result['saturation_indices'].items():
+            if mineral in si_limits:
+                if si > si_limits[mineral]:
+                    achievable = False
+                    if limiting_factor is None:
+                        limiting_factor = f"{mineral} (SI: {si:.2f} > limit: {si_limits[mineral]:.2f})"
+                critical_si[mineral] = si
+
+        # Calculate chemical requirements
+        chemical_type, dose_mg_L = self._calculate_chemical_dose(
+            baseline_pH, target_ph, feed_composition, temperature_c
+        )
+
+        return {
+            'achievable': achievable,
+            'target_recovery': target_recovery,
+            'target_pH': target_ph,
+            'chemical_type': chemical_type,
+            'chemical_dose_mg_L': dose_mg_L,
+            'limiting_factor': limiting_factor,
+            'critical_saturation_indices': critical_si,
+            'max_recovery': target_recovery if achievable else self._find_max_recovery_at_pH(
+                feed_composition, target_ph, temperature_c, use_antiscalant
+            )['recovery']
+        }
 
     def _find_max_recovery_at_pH(
         self,

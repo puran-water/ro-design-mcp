@@ -59,7 +59,59 @@ from .mcas_builder import estimate_solution_density
 from .ro_initialization import calculate_concentrate_tds
 from .logging_config import get_configured_logger
 
+# Import the new CIP system unit model
+from .cip_system_zo import CIPSystemZO
+
 logger = get_configured_logger(__name__)
+
+
+def _build_chemical_dosing(m, config_data, chemical_dosing, database):
+    """
+    Build chemical dosing units using WaterTAP's ChemicalAdditionZO.
+
+    Units auto-register their flows with the costing framework.
+    """
+
+    # Antiscalant system
+    if chemical_dosing.get("antiscalant_dose_mg_L", 0) > 0:
+        logger.info(f"Adding antiscalant dosing at {chemical_dosing['antiscalant_dose_mg_L']} mg/L")
+
+        m.fs.antiscalant = ChemicalAdditionZO(
+            property_package=m.fs.properties,
+            database=database,
+            process_subtype="anti_scalant"  # Uses existing YAML params
+        )
+
+        # Set the dosage
+        m.fs.antiscalant.chemical_dosage.fix(chemical_dosing["antiscalant_dose_mg_L"])
+
+    # pH adjustment (if specified in config)
+    if config_data.get('ph_adjustment'):
+        chemical_type = config_data.get('ph_chemical', 'NaOH')
+        dose_mg_L = config_data.get('ph_dose_mg_L', 0)
+
+        if dose_mg_L > 0:
+            logger.info(f"Adding pH adjustment with {chemical_type} at {dose_mg_L} mg/L")
+
+            # Map chemical type to WaterTAP subtype
+            if chemical_type == 'NaOH':
+                subtype = "caustic_soda"
+            elif chemical_type == 'HCl':
+                subtype = "hydrochloric_acid"
+            elif chemical_type == 'H2SO4':
+                subtype = "sulfuric_acid"
+            else:
+                logger.warning(f"Unknown pH chemical {chemical_type}, skipping pH adjustment")
+                return
+
+            m.fs.ph_adjustment = ChemicalAdditionZO(
+                property_package=m.fs.properties,
+                database=database,
+                process_subtype=subtype
+            )
+
+            # Set the dosage
+            m.fs.ph_adjustment.chemical_dosage.fix(dose_mg_L)
 
 
 def build_ro_model_v2(
@@ -549,39 +601,41 @@ def build_ro_model_v2(
             logger.info("ERD wired with simplified dummy feed approach (4 ports connected)")
     
     # =================================================================
+    # Chemical Dosing Systems
+    # =================================================================
+
+    # Load WaterTAP database for ZO models
+    m.db = Database()
+
+    if chemical_dosing:
+        _build_chemical_dosing(m, config_data, chemical_dosing, m.db)
+
+    # =================================================================
     # CIP System (if included)
     # =================================================================
-    
+
     if economic_params and economic_params.get("include_cip_system") and chemical_dosing:
-        logger.info("Adding CIP system block...")
-        
-        m.fs.cip_system = Block()
-        
-        # Calculate total membrane area
-        total_membrane_area = sum(
-            getattr(m.fs, f"ro_stage{i}").area
-            for i in range(1, n_stages + 1)
+        logger.info("Adding CIP system using CIPSystemZO...")
+
+        # Find the largest stage for CIP sizing (industry standard)
+        largest_stage_vessels = max(config_data['n_vessels'][i-1] for i in range(1, n_stages + 1))
+
+        # Get vessel properties
+        vessel_diameter_inch = 8  # Standard 8-inch vessels
+        elements_per_vessel = 7   # Standard configuration
+
+        # Create CIP system unit model with proper initialization
+        m.fs.cip_system = CIPSystemZO(
+            property_package=m.fs.properties,
+            database=m.db
         )
-        
-        # CIP chemical consumption
-        m.fs.cip_system.chemical_consumption_kg_year = Expression(
-            expr=pyunits.convert(
-                total_membrane_area
-                * chemical_dosing["cip_dose_kg_per_m2"] * (pyunits.kg/pyunits.m**2)
-                * chemical_dosing["cip_frequency_per_year"] / pyunits.year,
-                to_units=pyunits.kg/pyunits.year,
-            )
-        )
-        
-        # CIP capital cost
-        m.fs.cip_system.capital_cost_per_m2 = Var(
-            initialize=economic_params.get("cip_capital_cost_usd_m2", 50)
-            # Note: Currency units not directly supported in pyunits
-        )
-        m.fs.cip_system.capital_cost_per_m2.fix()
-        
-        m.fs.cip_system.capital_cost_total = Expression(
-            expr=m.fs.cip_system.capital_cost_per_m2 * total_membrane_area
+
+        # Set CIP system parameters
+        m.fs.cip_system.n_vessels_largest_stage.set_value(largest_stage_vessels)
+        m.fs.cip_system.vessel_diameter_inch.set_value(vessel_diameter_inch)
+        m.fs.cip_system.elements_per_vessel.set_value(elements_per_vessel)
+        m.fs.cip_system.cip_frequency_per_year.set_value(
+            chemical_dosing.get("cip_frequency_per_year", 4)
         )
     
     # =================================================================
@@ -628,10 +682,9 @@ def build_ro_model_v2(
         # Add unit costing blocks
         _add_unit_costing(m, n_stages, config_data, economic_params, membrane_type)
         
-        # Add chemical flow costing
-        if chemical_dosing:
-            _add_chemical_costing(m, n_stages, economic_params, chemical_dosing)
-        
+        # Chemical dosing units auto-register their flows with costing
+        # No manual registration needed
+
         # Process costs to aggregate
         m.fs.costing.cost_process()
         
@@ -1013,69 +1066,18 @@ def _add_unit_costing(m, n_stages, config_data, economic_params, membrane_type):
             )
             m.fs.erd.capital_cost.fix()
 
-    # CIP system capital cost (add to aggregate capital cost directly)
+    # CIP system costing
     if hasattr(m.fs, "cip_system"):
-        # CIP capital is already calculated in cip_system.capital_cost_total
-        # We'll include it in the results extractor as additional capex
-        logger.info("CIP system capital cost will be added in results extraction")
+        # CIPSystemZO has its own costing method
+        m.fs.cip_system.costing = UnitModelCostingBlock(
+            flowsheet_costing_block=m.fs.costing
+        )
+        logger.info("Added CIP system costing block")
 
     # Cartridge filter capital cost (will be added in results extraction)
     if economic_params.get("include_cartridge_filters", False):
         # Cartridge filter capital will be estimated in results extractor
         logger.info("Cartridge filter capital cost will be added in results extraction")
-
-
-def _add_chemical_costing(m, n_stages, economic_params, chemical_dosing):
-    """Add chemical consumption and flow costing."""
-    
-    # Antiscalant flow
-    if chemical_dosing.get("antiscalant_dose_mg_L", 0) > 0:
-        # Calculate antiscalant mass flow
-        # For Feed unit, flow_vol is in the properties block (m³/s)
-        feed_state = m.fs.fresh_feed.properties[0]
-        feed_flow_vol = feed_state.flow_vol  # m³/s
-        
-        # Convert: (m³/s) * (mg/L) * (1 kg/1e6 mg) * (1000 L/m³) = kg/s
-        m.fs.antiscalant_flow_kg_s = Expression(
-            expr=pyunits.convert(feed_flow_vol * (chemical_dosing["antiscalant_dose_mg_L"] * (pyunits.mg/pyunits.L)), to_units=pyunits.kg/pyunits.s),
-            doc="Antiscalant mass flow rate (kg/s)"
-        )
-        
-        # Register and cost antiscalant flow
-        # Use base_currency from costing block (USD_2018 by default in WaterTAP)
-        from pyomo.environ import Param
-        m.fs.costing.antiscalant_cost = Param(
-            initialize=economic_params.get("antiscalant_cost_usd_kg", 2.5),
-            mutable=True,
-            units=m.fs.costing.base_currency / pyunits.kg,
-            doc="Antiscalant cost"
-        )
-        
-        m.fs.costing.register_flow_type("antiscalant", m.fs.costing.antiscalant_cost)
-        m.fs.costing.cost_flow(m.fs.antiscalant_flow_kg_s, "antiscalant")
-        
-        logger.info(f"Added antiscalant costing at {chemical_dosing['antiscalant_dose_mg_L']} mg/L")
-    
-    # CIP chemicals
-    if hasattr(m.fs, "cip_system"):
-        # CIP chemical flow (annualized to per second)
-        m.fs.cip_chemical_flow_kg_s = Expression(
-            expr=pyunits.convert(m.fs.cip_system.chemical_consumption_kg_year, to_units=pyunits.kg/pyunits.s)
-        )
-        
-        # Register and cost CIP chemicals
-        from pyomo.environ import Param
-        m.fs.costing.cip_chemical_cost = Param(
-            initialize=economic_params.get("cip_surfactant_cost_usd_kg", 3.0),
-            mutable=True,
-            units=m.fs.costing.base_currency / pyunits.kg,
-            doc="CIP chemical cost"
-        )
-        
-        m.fs.costing.register_flow_type("cip_chemical", m.fs.costing.cip_chemical_cost)
-        m.fs.costing.cost_flow(m.fs.cip_chemical_flow_kg_s, "cip_chemical")
-        
-        logger.info(f"Added CIP chemical costing")
 
 
 def _get_product_flow(m, n_stages):
