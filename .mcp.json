@@ -11,6 +11,19 @@
         "RO_DESIGN_MCP_ROOT": "C:\\Users\\hvksh\\mcp-servers\\ro-design-mcp",
         "MCP_SIMULATION_TIMEOUT_S": "280"
       }
+    },
+    "ro-kb": {
+      "command": "/home/hvksh/knowledgebase/.venv/bin/python",
+      "args": ["/home/hvksh/knowledgebase/server.py", "stdio"],
+      "env": {
+        "OLLAMA_URL": "http://localhost:11434",
+        "OLLAMA_MODEL": "snowflake-arctic-embed:xs",
+        "TEI_RERANK_URL": "http://localhost:8087",
+        "QDRANT_URL": "http://localhost:6333",
+        "FTS_DB_PATH": "/home/hvksh/knowledgebase/data/ro_kb_fts.db",
+        "NOMIC_KB_SCOPES": "{\"ro_kb\":{\"collection\":\"ro_kb\",\"title\":\"Reverse Osmosis KB\"}}"
+      },
+      "autoApprove": ["search_ro_kb"]
     }
   }
 }

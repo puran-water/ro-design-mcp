@@ -16,6 +16,11 @@ from functools import lru_cache
 from pathlib import Path
 import numpy as np
 
+try:
+    from periodictable import formula as chemform  # Used for molar mass lookups
+except ImportError:  # pragma: no cover - periodictable is a phreeqpython dependency
+    chemform = None
+
 logger = logging.getLogger(__name__)
 
 # Cache for saturation index calculations
@@ -70,6 +75,24 @@ class PhreeqcROClient:
 
         self.cache_enabled = cache_enabled
         self.pp = None
+
+        # Optional mapping for display purposes only
+        # PhreeqPython handles the chemistry internally
+        self.element_to_ion_display = {
+            'Na': 'Na+',
+            'Ca': 'Ca2+',
+            'Mg': 'Mg2+',
+            'K': 'K+',
+            'Ba': 'Ba2+',
+            'Sr': 'Sr2+',
+            'Cl': 'Cl-',
+            'S(6)': 'SO4-2',
+            'C(4)': 'HCO3-',
+            'N(5)': 'NO3-',
+            'F': 'F-',
+            'Si': 'SiO2'
+        }
+
         self._initialize_phreeqc(database_path)
 
     def _initialize_phreeqc(self, database_path: Optional[str] = None):
@@ -231,10 +254,15 @@ class PhreeqcROClient:
         recovery: float,
         temperature_c: float = 25.0,
         ph: float = 7.5,
-        rejection: float = 0.985
+        rejection: float = 0.985,
+        maintain_ph: bool = False
     ) -> Dict[str, Any]:
         """
-        Calculate scaling potential for RO concentrate at given recovery.
+        Calculate scaling potential for RO concentrate at given recovery using PHREEQC.
+
+        This method now properly uses PHREEQC's REACTION capability to model
+        water removal and concentration effects, including CO2 degassing,
+        speciation changes, and pH shifts.
 
         Args:
             feed_composition: Feed water ion concentrations in mg/L
@@ -242,6 +270,7 @@ class PhreeqcROClient:
             temperature_c: Temperature in Celsius
             ph: pH value
             rejection: Salt rejection (default 0.985)
+            maintain_ph: If True, use Fix_pH to maintain pH; if False, let pH drift naturally
 
         Returns:
             Dictionary with concentrate composition and saturation indices
@@ -249,36 +278,120 @@ class PhreeqcROClient:
         # Calculate concentration factor
         cf = 1 / (1 - recovery)
 
-        # Calculate concentrate composition accounting for rejection
-        concentrate_composition = {}
-        for ion, conc in feed_composition.items():
-            # For most ions, apply rejection
-            # Rejection = 1 - salt passage, so concentrate = feed * CF * (1 - rejection)
-            # But typically for scaling we assume worst case (no rejection) unless specified
-            if rejection > 0:
-                # Account for salt passage through membrane
-                salt_passage = 1 - rejection
-                concentrate_composition[ion] = conc * (cf - salt_passage * (cf - 1))
-            else:
-                # Conservative assumption: perfect concentration
-                concentrate_composition[ion] = conc * cf
+        # Build PHREEQC solution with proper ion mapping
+        solution_dict = self._build_solution(feed_composition, temperature_c, ph, pe=4.0)
 
-        # Calculate saturation indices for concentrate
-        si_results = self.calculate_saturation_indices(
-            concentrate_composition, temperature_c, ph
-        )
+        # Create feed solution in PHREEQC
+        feed_solution = self.pp.add_solution(solution_dict)
 
-        # Determine scaling risks
-        scaling_risks = self._assess_scaling_risks(si_results)
+        # Create a copy for concentration
+        concentrate_solution = feed_solution.copy()
 
-        return {
-            'recovery': recovery,
-            'concentration_factor': cf,
-            'concentrate_composition': concentrate_composition,
-            'saturation_indices': si_results,
-            'scaling_risks': scaling_risks,
-            'limiting_scales': [s for s in scaling_risks if scaling_risks[s] == 'high']
-        }
+        # Calculate water removal (recovery * initial water moles)
+        water_to_remove = recovery * 55.51  # moles
+
+        try:
+            # Remove water using PhreeqPython's native change method
+            # This automatically creates the proper REACTION block
+            concentrate_solution.change({'H2O': -water_to_remove}, units='mol')
+
+            # If maintaining pH, use PhreeqPython's change_ph method
+            # This automatically uses Fix_pH equilibrium phase
+            if maintain_ph:
+                concentrate_solution.change_ph(ph)
+
+        except Exception as e:
+            # NO FALLBACK - fail loudly
+            logger.error(f"PHREEQC concentration failed: {e}")
+            raise RuntimeError(f"Cannot calculate concentrate chemistry without PHREEQC: {e}")
+
+        # Extract concentrate composition directly from solution object
+        try:
+            if chemform is None:
+                raise RuntimeError("periodictable dependency not available for molar mass conversion")
+
+            concentrate_composition = {}
+            solution_volume = concentrate_solution.volume or 1.0
+
+            # Get all elements present in the solution along with their molar totals
+            for element, moles in concentrate_solution.elements.items():
+                base_element = self._get_base_element_symbol(element)
+                if base_element is None:
+                    continue
+
+                if moles is None:
+                    continue
+
+                try:
+                    molar_mass = chemform(base_element).mass
+                except Exception:
+                    # Skip species without defined molar mass (e.g., electrons)
+                    logger.debug(f"Skipping element {element}: cannot resolve molar mass")
+                    continue
+
+                mg_total = float(moles) * molar_mass * 1e3
+                mg_per_L = mg_total / solution_volume  # volume is in L
+
+                # Map to our ion notation if needed (optional for display)
+                ion_name = self._get_ion_name(element)
+                concentrate_composition[ion_name] = mg_per_L
+
+            # Get actual pH of concentrate
+            actual_ph = concentrate_solution.pH
+
+            # Calculate saturation indices directly from concentrate solution
+            si_results = {}
+            for mineral in self.RO_SCALING_MINERALS:
+                try:
+                    si = concentrate_solution.si(mineral)
+                    if si is not None and not np.isnan(si) and si != -999.0:
+                        si_results[mineral] = float(si)
+                except:
+                    # Mineral not in database
+                    continue
+
+            # Get total silica if present
+            if 'Si' in concentrate_solution.elements:
+                si_mg = concentrate_solution.total_element('Si', 'mg')
+                # Convert Si to SiO2 equivalent
+                silica_mg_l = (si_mg * 60.08 / 28.09) / concentrate_solution.volume
+                concentrate_composition['SiO2_total'] = silica_mg_l
+
+            # Determine scaling risks
+            scaling_risks = self._assess_scaling_risks(si_results)
+
+            return {
+                'recovery': recovery,
+                'concentration_factor': cf,
+                'concentrate_composition': concentrate_composition,
+                'saturation_indices': si_results,
+                'actual_ph': actual_ph,
+                'ph_shift': actual_ph - ph,
+                'scaling_risks': scaling_risks,
+                'limiting_scales': [s for s in scaling_risks if scaling_risks[s] == 'high'],
+                'method': 'PHREEQC_native'
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to extract concentrate data: {e}")
+            raise RuntimeError(f"Cannot extract concentrate chemistry from PHREEQC: {e}")
+
+
+    def _get_ion_name(self, element: str) -> str:
+        """Convert PHREEQC element name to ion notation for display."""
+        return self.element_to_ion_display.get(element, element)
+
+    @staticmethod
+    def _get_base_element_symbol(element: str) -> Optional[str]:
+        """Normalize PHREEQC element labels like 'S(6)' to plain element symbols."""
+        if not element:
+            return None
+
+        base = element.split('(')[0].strip()
+        if not base or base.lower() in {'charge', 'e'}:
+            return None
+
+        return base
 
     def find_maximum_recovery(
         self,
@@ -314,10 +427,11 @@ class PhreeqcROClient:
                 'Barite': 0.0,       # 100% saturation (antiscalants ineffective for BaSO4)
                 'Celestite': np.log10(1.15), # 115% saturation with antiscalant
                 'Fluorite': 0.0,     # At saturation
-                'SiO2(a)': None,     # Check concentration instead
+                'SiO2(a)': 0.0,      # Amorphous silica at saturation
+                'Chalcedony': -0.2,  # More conservative for crystalline forms
+                'Quartz': -0.5,      # Most conservative for crystalline silica
                 'Brucite': 0.5,      # Some supersaturation allowed
             }
-            silica_limit = 180  # mg/L in concentrate
         else:
             # More conservative limits without antiscalant
             si_limits = {
@@ -328,10 +442,11 @@ class PhreeqcROClient:
                 'Barite': -0.3,
                 'Celestite': -0.3,
                 'Fluorite': -0.3,
-                'SiO2(a)': None,
+                'SiO2(a)': -0.3,     # Below saturation without antiscalant
+                'Chalcedony': -0.5,  # Conservative for crystalline forms
+                'Quartz': -0.7,      # Very conservative for quartz
                 'Brucite': 0.0,
             }
-            silica_limit = 120  # mg/L in concentrate
 
         # Binary search for maximum recovery
         min_recovery = 0.1
@@ -352,31 +467,11 @@ class PhreeqcROClient:
             # Check if any limits are exceeded
             exceeded = False
             for mineral, si in results['saturation_indices'].items():
-                if mineral in si_limits and si_limits[mineral] is not None:
+                if mineral in si_limits:
                     if si > si_limits[mineral]:
                         exceeded = True
                         limiting_factor = f"{mineral} (SI: {si:.2f} > {si_limits[mineral]:.2f})"
                         break
-
-            # Check silica limit for all silica forms
-            if not exceeded:
-                silica_conc = 0
-                silica_forms = ['SiO2', 'SiO3-2', 'SiO3^2-', 'H4SiO4', 'H3SiO4-']
-                for silica_form in silica_forms:
-                    if silica_form in results['concentrate_composition']:
-                        # Convert all to SiO2 equivalent for comparison
-                        if silica_form == 'SiO3-2' or silica_form == 'SiO3^2-':
-                            # SiO3 to SiO2: multiply by 60.08/76.08
-                            silica_conc += results['concentrate_composition'][silica_form] * (60.08/76.08)
-                        elif silica_form == 'H4SiO4':
-                            # H4SiO4 to SiO2: multiply by 60.08/96.11
-                            silica_conc += results['concentrate_composition'][silica_form] * (60.08/96.11)
-                        else:
-                            silica_conc += results['concentrate_composition'][silica_form]
-
-                if silica_conc > silica_limit:
-                    exceeded = True
-                    limiting_factor = f"Silica ({silica_conc:.1f} mg/L as SiO2 > {silica_limit} mg/L)"
 
             if exceeded:
                 # Recovery too high, search lower

@@ -47,15 +47,30 @@ This MCP server provides three primary tools for RO system design:
 - Operating cost breakdown (energy, chemicals, maintenance)
 - Levelized cost of water (LCOW) calculation
 
-### Recent Improvements (v2.2)
-- **PHREEQC Integration**: Accurate thermodynamic scaling predictions
-- **Antiscalant-Aware Recovery**: Proper supersaturation limits with antiscalants
-- **Water Chemistry Validation**: Centralized ion composition handling (DRY principle)
-- **Sustainable Recovery Calculations**: Maximum recovery based on scaling limits
-- Enhanced seawater simulation with system-level recovery constraints
-- Improved flux bound relaxation for high-TDS feeds
-- Progressive initialization fallback for challenging conditions
-- Optimized solute recovery parameters for MCAS charge balance
+### Recent Improvements (v2.3 - 2025-09-22)
+- **Enhanced PHREEQC Integration**:
+  - Uses PHREEQC REACTION for thermodynamically-accurate concentrate chemistry
+  - Models pH shifts, CO2 degassing, and ion speciation during concentration
+  - Tracks pH-dependent silica solubility via saturation indices (not fixed mg/L)
+  - Removed all algebraic fallbacks - ensures thermodynamic rigor
+- **pH Optimization Module**:
+  - New `pHRecoveryOptimizer` class for finding optimal pH to achieve target recovery
+  - Calculates chemical doses (NaOH, HCl, H2SO4) for pH adjustment
+  - Compares different pH adjustment chemicals with cost analysis
+- **Dynamic Chemical Dosing**:
+  - New `ChemicalDosingCalculator` for antiscalant and CIP chemical calculations
+  - Severity-based dosing recommendations
+  - Product-specific recommendations (SUEZ, Nalco, Avista)
+- **Sustainable Recovery Calculations**:
+  - Maximum recovery based on mineral saturation limits
+  - Antiscalant-aware SI thresholds
+  - Safety margin recommendations
+- **Previous v2.2 Features**:
+  - Water Chemistry Validation: Centralized ion composition handling (DRY principle)
+  - Enhanced seawater simulation with system-level recovery constraints
+  - Improved flux bound relaxation for high-TDS feeds
+  - Progressive initialization fallback for challenging conditions
+  - Optimized solute recovery parameters for MCAS charge balance
 
 ## Installation
 
@@ -123,7 +138,14 @@ Returns: Comprehensive simulation results including performance, economics, and 
 
 ## API Version History
 
-### v2.2 (Current - 2025-09-21)
+### v2.3 (Current - 2025-09-22)
+- **Enhanced PHREEQC Integration**: Full thermodynamic modeling with REACTION blocks
+- **pH Optimization**: New module for pH-based recovery optimization
+- **Dynamic Chemical Dosing**: Intelligent antiscalant and pH adjustment calculations
+- **Silica SI Tracking**: pH-dependent silica solubility via saturation indices
+- **No Fallbacks**: Removed algebraic approximations - pure thermodynamic calculations
+
+### v2.2 (2025-09-21)
 - **PHREEQC Integration**: Thermodynamic scaling predictions with PhreeqPython
 - **Sustainable Recovery**: Maximum recovery calculations based on scaling limits
 - **Antiscalant Modeling**: Proper supersaturation limits for different antiscalant scenarios
