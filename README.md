@@ -47,7 +47,11 @@ This MCP server provides three primary tools for RO system design:
 - Operating cost breakdown (energy, chemicals, maintenance)
 - Levelized cost of water (LCOW) calculation
 
-### Recent Improvements (v2.1)
+### Recent Improvements (v2.2)
+- **PHREEQC Integration**: Accurate thermodynamic scaling predictions
+- **Antiscalant-Aware Recovery**: Proper supersaturation limits with antiscalants
+- **Water Chemistry Validation**: Centralized ion composition handling (DRY principle)
+- **Sustainable Recovery Calculations**: Maximum recovery based on scaling limits
 - Enhanced seawater simulation with system-level recovery constraints
 - Improved flux bound relaxation for high-TDS feeds
 - Progressive initialization fallback for challenging conditions
@@ -97,8 +101,11 @@ Parameters:
 - `max_recycle_ratio` (float, optional): Maximum recycle ratio (0-1)
 - `flux_targets_lmh` (string, optional): JSON array of per-stage flux targets
 - `flux_tolerance` (float, optional): Flux tolerance fraction
+- `feed_ion_composition` (string, optional): JSON object of ion concentrations in mg/L
+- `feed_temperature_c` (float, optional): Feed temperature in Celsius (default 25°C)
+- `feed_ph` (float, optional): Feed pH value (default 7.5)
 
-Returns: Array of configurations with vessel counts, flows, and recovery metrics.
+Returns: Array of configurations with vessel counts, flows, recovery metrics, and sustainable recovery calculations based on scaling limits.
 
 #### simulate_ro_system_v2
 Performs WaterTAP simulation with economic analysis.
@@ -116,7 +123,13 @@ Returns: Comprehensive simulation results including performance, economics, and 
 
 ## API Version History
 
-### v2.0 (Current - 2025-09-19)
+### v2.2 (Current - 2025-09-21)
+- **PHREEQC Integration**: Thermodynamic scaling predictions with PhreeqPython
+- **Sustainable Recovery**: Maximum recovery calculations based on scaling limits
+- **Antiscalant Modeling**: Proper supersaturation limits for different antiscalant scenarios
+- **Water Chemistry Validation**: Centralized ion composition validation and parsing
+
+### v2.0 (2025-09-19)
 - **Membrane Catalog System**: 67 manufacturer-specific membrane models
 - **Ion-Specific B Values**: Physically-based rejection modeling per ion
 - **Removed v1 API**: Only simulate_ro_system_v2 available

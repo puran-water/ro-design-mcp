@@ -150,7 +150,10 @@ async def optimize_ro_configuration(
     allow_recycle: bool = True,
     max_recycle_ratio: float = 0.9,
     flux_targets_lmh: Optional[str] = None,
-    flux_tolerance: Optional[float] = None
+    flux_tolerance: Optional[float] = None,
+    feed_ion_composition: Optional[str] = None,
+    feed_temperature_c: float = 25.0,
+    feed_ph: float = 7.5
 ) -> Dict[str, Any]:
     """
     Generate optimal RO vessel array configuration based on flow and recovery.
@@ -168,12 +171,17 @@ async def optimize_ro_configuration(
                          - Simple numbers: "20" or "18.5"
                          - JSON arrays: "[22, 18, 15]" for per-stage targets
         flux_tolerance: Optional flux tolerance as fraction (e.g., 0.1 for ±10%)
-    
+        feed_ion_composition: Optional JSON string of ion concentrations in mg/L
+                             for sustainable recovery calculation
+        feed_temperature_c: Feed temperature in Celsius (default 25°C)
+        feed_ph: Feed pH value (default 7.5)
+
     Returns:
         Dictionary containing:
         - status: "success" or error status
         - configurations: List of ALL viable configurations (1, 2, 3 stages)
         - summary: Feed conditions and configuration count
+        - sustainable_recovery: If ion composition provided, includes max sustainable recovery
         Each configuration includes vessel counts, flows, and recovery metrics
     
     Example:
@@ -263,7 +271,75 @@ async def optimize_ro_configuration(
                 "Consider adjusting flux targets, allowing recycle, "
                 "or accepting lower recovery."
             )
-        
+
+        # Add sustainable recovery calculation if ion composition provided
+        if feed_ion_composition is not None:
+            try:
+                from utils.scaling_prediction import calculate_sustainable_recovery
+                from utils.water_chemistry_validation import (
+                    parse_and_validate_ion_composition,
+                    validate_water_chemistry_params,
+                    create_feed_water_chemistry
+                )
+
+                # Parse and validate ion composition
+                ion_comp = parse_and_validate_ion_composition(feed_ion_composition)
+
+                # Validate temperature and pH
+                temp_c, ph = validate_water_chemistry_params(feed_temperature_c, feed_ph)
+
+                # Calculate sustainable recovery
+                sustainable = calculate_sustainable_recovery(
+                    ion_composition_mg_l=ion_comp,
+                    temperature_c=temp_c,
+                    pressure_bar=1.0,  # Standard pressure
+                    ph=ph,
+                    with_antiscalant=True  # Assume antiscalant use
+                )
+
+                # Format sustainable recovery for display
+                sustainable_recovery_display = {
+                    "max_recovery": sustainable["max_recovery"],
+                    "max_recovery_percent": sustainable["max_recovery_percent"],
+                    "recommended_operating_recovery": sustainable["recommendations"]["operating_recovery"],
+                    "recommended_operating_recovery_percent": sustainable["recommendations"]["operating_recovery_percent"],
+                    "limiting_minerals": sustainable["limiting_minerals"],
+                    "comparison_to_target": {
+                        "target_recovery": water_recovery_fraction,
+                        "target_recovery_percent": water_recovery_fraction * 100,
+                        "is_sustainable": water_recovery_fraction <= sustainable["max_recovery"],
+                        "safety_margin": sustainable["max_recovery"] - water_recovery_fraction
+                    }
+                }
+
+                # Add warning if target exceeds sustainable recovery
+                if water_recovery_fraction > sustainable["max_recovery"]:
+                    sustainable_recovery_display["warning"] = (
+                        f"Target recovery ({water_recovery_fraction:.1%}) exceeds maximum sustainable "
+                        f"recovery ({sustainable['max_recovery']:.1%}) based on scaling limits. "
+                        f"Limiting minerals: {', '.join(sustainable['limiting_minerals'])}"
+                    )
+
+                response["sustainable_recovery"] = sustainable_recovery_display
+
+                # Store water chemistry in ALL configurations for downstream use
+                water_chemistry = create_feed_water_chemistry(
+                    ion_composition_mg_l=ion_comp,
+                    temperature_c=temp_c,
+                    ph=ph,
+                    sustainable_recovery=sustainable
+                )
+
+                # Add to each configuration for seamless flow to simulate_ro_system_v2
+                for config in response.get("configurations", []):
+                    config["feed_water_chemistry"] = water_chemistry
+
+            except Exception as e:
+                logger.warning(f"Could not calculate sustainable recovery: {e}")
+                response["sustainable_recovery"] = {
+                    "error": f"Calculation failed: {str(e)}"
+                }
+
         return response
         
     except Exception as e:
@@ -279,8 +355,8 @@ async def optimize_ro_configuration(
 async def simulate_ro_system_v2(
     configuration: Dict[str, Any],
     feed_salinity_ppm: float,
-    feed_ion_composition: str,
     membrane_model: str,
+    feed_ion_composition: Optional[str] = None,
     feed_temperature_c: float = 25.0,
     economic_params: Optional[Dict[str, Any]] = None,
     chemical_dosing: Optional[Dict[str, Any]] = None,
@@ -296,9 +372,10 @@ async def simulate_ro_system_v2(
     Args:
         configuration: Output from optimize_ro_configuration tool
         feed_salinity_ppm: Feed water salinity in ppm
-        feed_ion_composition: JSON string of ion concentrations in mg/L
-        feed_temperature_c: Feed temperature in Celsius (default 25°C)
         membrane_model: Specific membrane model (e.g., 'BW30_PRO_400', 'SW30HRLE_440')
+        feed_ion_composition: Optional JSON string of ion concentrations in mg/L
+                            (uses configuration data if available)
+        feed_temperature_c: Feed temperature in Celsius (default 25°C)
         economic_params: Economic parameters (uses WaterTAP defaults if None)
             - wacc: Weighted average cost of capital (default 0.093)
             - plant_lifetime_years: Plant lifetime (default 30)
@@ -372,16 +449,38 @@ async def simulate_ro_system_v2(
         if not membrane_model:
             raise ValueError("membrane_model is required")
         
-        # Parse ion composition
-        try:
-            parsed_ion_composition = json.loads(feed_ion_composition)
-            if not isinstance(parsed_ion_composition, dict):
-                raise ValueError("Ion composition must be a JSON object")
-            for ion, conc in parsed_ion_composition.items():
-                if not isinstance(conc, (int, float)) or conc < 0:
-                    raise ValueError(f"Invalid concentration for {ion}: {conc}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON format for ion composition: {str(e)}")
+        # Check if water chemistry is already in configuration (from optimize_ro_configuration)
+        from utils.water_chemistry_validation import (
+            parse_and_validate_ion_composition,
+            extract_water_chemistry_from_config
+        )
+
+        stored_chemistry = extract_water_chemistry_from_config(configuration)
+
+        # Use stored chemistry if available and not overridden
+        if stored_chemistry and feed_ion_composition == stored_chemistry.get("ion_composition_mg_l"):
+            # User passed the same data - use the stored validated version
+            parsed_ion_composition = stored_chemistry["ion_composition_mg_l"]
+            # Can also use stored temperature and pH if not overridden
+            logger.info("Using water chemistry from configuration")
+        elif stored_chemistry and feed_ion_composition is None:
+            # No ion composition provided but available in config - use it
+            parsed_ion_composition = stored_chemistry["ion_composition_mg_l"]
+            logger.info("Using stored water chemistry from configuration")
+        elif feed_ion_composition is not None:
+            # Parse new ion composition (either override or first time)
+            if isinstance(feed_ion_composition, str):
+                parsed_ion_composition = parse_and_validate_ion_composition(feed_ion_composition)
+            elif isinstance(feed_ion_composition, dict):
+                parsed_ion_composition = feed_ion_composition
+            else:
+                raise ValueError("feed_ion_composition must be a JSON string or dictionary")
+        else:
+            # No ion composition provided and none in config
+            raise ValueError(
+                "feed_ion_composition is required. Either provide it directly or "
+                "ensure it was provided to optimize_ro_configuration."
+            )
         
         # Apply defaults and validate
         economic_params = apply_economic_defaults(economic_params, 'brackish' if not membrane_model.startswith('SW') else 'seawater')
