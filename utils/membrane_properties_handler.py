@@ -16,6 +16,44 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def normalize_membrane_name(membrane_model: str) -> str:
+    """
+    Normalize membrane model name to match catalog format.
+
+    Converts common variations like underscores to hyphens.
+    E.g., SW30HRLE_440 -> SW30HRLE-440
+
+    Args:
+        membrane_model: Raw membrane model name
+
+    Returns:
+        Normalized membrane model name
+    """
+    if not membrane_model:
+        return membrane_model
+
+    # Common mappings for known issues
+    name_mappings = {
+        'SW30HRLE_440': 'SW30HRLE-440',
+        'SW30HRLE_370/34': 'SW30HRLE-370/34',
+        'BW30_PRO_400': 'BW30_PRO_400',  # Keep as is
+        'BW30_400': 'BW30_400',  # Keep as is
+    }
+
+    # Check explicit mappings first
+    if membrane_model in name_mappings:
+        return name_mappings[membrane_model]
+
+    # For SW30 series, convert underscores before numbers to hyphens
+    if 'SW30' in membrane_model and '_' in membrane_model:
+        # Replace underscore before numbers with hyphen
+        import re
+        normalized = re.sub(r'_(\d)', r'-\1', membrane_model)
+        return normalized
+
+    return membrane_model
+
+
 def get_membrane_properties(
     membrane_type: str = 'brackish',
     membrane_properties: Optional[Dict[str, float]] = None,
@@ -194,24 +232,24 @@ def get_membrane_from_catalog(
     catalog = load_membrane_catalog()
     spacer_profiles = load_spacer_profiles()
 
-    # Normalize model name (handle variations)
-    model_key = membrane_model.replace('-', '_').replace(' ', '_')
+    # Normalize membrane name using the new function
+    normalized_model = normalize_membrane_name(membrane_model)
 
-    if model_key not in catalog:
-        # Try without spaces/hyphens
+    if normalized_model not in catalog:
+        # Try case-insensitive match
         for key in catalog.keys():
-            if key.lower() == model_key.lower():
-                model_key = key
+            if key.lower() == normalized_model.lower():
+                normalized_model = key
                 break
         else:
-            logger.warning(f"Membrane model '{membrane_model}' not found in catalog")
+            logger.warning(f"Membrane model '{membrane_model}' (normalized: '{normalized_model}') not found in catalog")
             # Fall back to generic type
             if 'SW' in membrane_model.upper():
                 return get_membrane_properties_mcas('seawater', None, solute_list)
             else:
                 return get_membrane_properties_mcas('brackish', None, solute_list)
 
-    membrane = catalog[model_key]
+    membrane = catalog[normalized_model]
 
     # Get spacer properties
     spacer = spacer_profiles.get(membrane.get('spacer_profile', 'default'),

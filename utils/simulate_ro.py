@@ -220,9 +220,10 @@ def run_ro_simulation(
             # Redirect stdout during solving to prevent MCP protocol corruption
             with redirect_stdout_to_stderr():
                 solve_results = initialize_and_solve_mcas(
-                    model, 
-                    configuration, 
-                    optimize_pumps
+                    model,
+                    configuration,
+                    optimize_pumps=optimize_pumps,
+                    use_staged_solve=True  # Enable progressive constraint tightening
                 )
             
             if solve_results["status"] != "success":

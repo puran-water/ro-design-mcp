@@ -114,6 +114,7 @@ def _build_chemical_dosing(m, config_data, chemical_dosing, database):
             m.fs.ph_adjustment.chemical_dosage.fix(dose_mg_L)
 
 
+
 def build_ro_model_v2(
     config_data: Dict[str, Any],
     mcas_config: Dict[str, Any],
@@ -343,6 +344,8 @@ def build_ro_model_v2(
         logger.error(f"Failed to initialize fresh feed conditions: {e}")
         raise
 
+    # Note: Removed _seed_recycle_initial_guess - let WaterTAP handle recycle initialization naturally
+
     # -----------------------------------------------------------------
     # Apply critical physical bounds and initializations (mirror v1)
     # - Flux bounds and initial values to avoid non-physical recoveries
@@ -353,6 +356,12 @@ def build_ro_model_v2(
         # Per-stage RO settings
         solute_list = list(m.fs.properties.solute_set)
         ion_comp = mcas_config.get('ion_composition_mg_l', {})
+
+        # Check if this is a recycle case for relaxed bounds
+        recycle_info = config_data.get('recycle_info', {})
+        uses_recycle = recycle_info.get('uses_recycle', False)
+        if uses_recycle:
+            logger.info("Applying relaxed bounds for recycle configuration")
 
         # Pre-compute an approximate stage feed TDS progression to inform bounds
         # Start with overall feed TDS; update using previous stage recovery
@@ -429,18 +438,46 @@ def build_ro_model_v2(
                         jw_max_lmh = 25.0  # 25 LMH maximum
                         typical_dp = 40e5  # 40 bar typical
                 
-                # For later stages, reduce maximum flux by 10% per stage
+                # For later stages, check if pressure demands higher flux
                 if i > 1:
-                    jw_max_lmh *= (0.9 ** (i - 1))
+                    # Get the configured pressure for this stage
+                    stage_pressure_bar = stage_data.get('feed_pressure_bar', 20)
+                    # Account for pressure factor applied in solver (1.5x for Stage 2+)
+                    actual_pressure_pa = stage_pressure_bar * 1.5 * 1e5
+
+                    # Estimate required flux based on pressure
+                    # Assuming osmotic pressure is about 40% of feed pressure at high recovery
+                    estimated_ndp = actual_pressure_pa * 0.6
+                    pressure_based_flux = A_w * estimated_ndp * rho_water * 3.6e6  # Convert to LMH
+
+                    # Use the higher of the calculated bounds or pressure-based estimate
+                    jw_max_lmh = max(jw_max_lmh, pressure_based_flux * 1.2)
+
+                    logger.info(f"Stage {i}: Adjusted max flux to {jw_max_lmh:.1f} LMH based on pressure {stage_pressure_bar*1.5:.1f} bar")
 
                 if expected_flux_lmh is not None:
-                    design_upper = expected_flux_lmh * 1.2 + 5.0
-                    jw_max_lmh = max(jw_max_lmh, design_upper)
-                    jw_max_lmh = min(jw_max_lmh, 120.0)
-                    jw_min_lmh = min(
-                        jw_min_lmh,
-                        max(0.0, expected_flux_lmh * 0.2)
-                    )
+                    # Use wider bounds to avoid over-constraining
+                    # The objective function will pull toward design flux
+                    if uses_recycle:
+                        # Tighter bounds for recycle (back to git-like)
+                        design_lower = expected_flux_lmh * 0.75  # 25% below design
+                        design_upper = expected_flux_lmh * 1.25  # 25% above design
+                        jw_max_lmh = min(60.0, max(jw_max_lmh, design_upper))
+                        jw_min_lmh = max(0.1, design_lower)  # Reasonable minimum
+                        logger.info(f"Stage {i} recycle flux bounds: [{jw_min_lmh:.1f}, {jw_max_lmh:.1f}] LMH (±25% of design)")
+                    else:
+                        # Tighter bounds: ±20% of design flux (like git version)
+                        design_lower = expected_flux_lmh * 0.8
+                        design_upper = expected_flux_lmh * 1.2
+
+                        # For seawater or later stages, allow slightly more variation
+                        if membrane_type == 'seawater' or i >= 2:
+                            design_lower = expected_flux_lmh * 0.75
+                            design_upper = expected_flux_lmh * 1.3
+
+                        jw_max_lmh = max(jw_max_lmh, design_upper)
+                        jw_max_lmh = min(jw_max_lmh, 120.0)
+                        jw_min_lmh = min(jw_min_lmh, max(0.0, design_lower))
 
                 if jw_min_lmh >= jw_max_lmh:
                     jw_min_lmh = max(0.0, jw_max_lmh * 0.5)
@@ -501,12 +538,15 @@ def build_ro_model_v2(
 
                     for prop_block in property_locations:
                         if hasattr(prop_block, 'conc_mass_phase_comp'):
-                            upper = max(10 * conc_feed_kg_m3, 1e-3)
+                            # Increase multiplier for recycle cases
+                            multiplier = 20.0 if uses_recycle else 10.0
+                            upper = max(multiplier * conc_feed_kg_m3, 1e-3)
                             prop_block.conc_mass_phase_comp[0, 'Liq', comp].setub(upper)
                             if conc_feed_mg_l < 1.0:
                                 prop_block.conc_mass_phase_comp[0, 'Liq', comp].setlb(1e-10)
                         if hasattr(prop_block, 'mass_frac_phase_comp'):
-                            upper_frac = min(10 * mass_frac_feed, 0.1)
+                            multiplier = 20.0 if uses_recycle else 10.0
+                            upper_frac = min(multiplier * mass_frac_feed, 0.1)
                             prop_block.mass_frac_phase_comp[0, 'Liq', comp].setub(upper_frac)
                             if conc_feed_mg_l < 1.0:
                                 prop_block.mass_frac_phase_comp[0, 'Liq', comp].setlb(1e-12)
@@ -544,7 +584,7 @@ def build_ro_model_v2(
     
     if economic_params:
         include_erd = _should_include_erd(config_data, economic_params, membrane_type)
-        
+
         if include_erd:
             logger.info("Adding Energy Recovery Device (pressure exchanger)...")
             
@@ -608,45 +648,44 @@ def build_ro_model_v2(
     m.db = Database()
 
     if chemical_dosing:
-        _build_chemical_dosing(m, config_data, chemical_dosing, m.db)
+        logger.warning("SKIPPING chemical dosing due to AMPL errors in ZO models")
+        # TODO: Fix ZO model AMPL errors
+        # _build_chemical_dosing(m, config_data, chemical_dosing, m.db)
 
     # =================================================================
     # CIP System (if included)
     # =================================================================
 
     if economic_params and economic_params.get("include_cip_system") and chemical_dosing:
-        logger.info("Adding CIP system using CIPSystemZO...")
+        logger.warning("SKIPPING CIP system due to AMPL errors in ZO models")
+        # TODO: Fix ZO model AMPL errors
+        pass
 
-        # Find the largest stage for CIP sizing (industry standard)
-        largest_stage_vessels = max(config_data['n_vessels'][i-1] for i in range(1, n_stages + 1))
+    # =================================================================
+    # Expand arcs - MUST happen before costing framework
+    # =================================================================
 
-        # Get vessel properties
-        vessel_diameter_inch = 8  # Standard 8-inch vessels
-        elements_per_vessel = 7   # Standard configuration
+    # Debug: Check all arcs before expansion
+    logger.info("Checking all arcs before expansion...")
+    for comp_name in m.fs.component_objects(Arc, active=True):
+        arc = getattr(m.fs, comp_name.local_name)
+        if arc is None:
+            logger.error(f"Arc {comp_name.local_name} is None!")
+        else:
+            logger.debug(f"Arc {comp_name.local_name} exists: {arc}")
 
-        # Create CIP system unit model with proper initialization
-        m.fs.cip_system = CIPSystemZO(
-            property_package=m.fs.properties,
-            database=m.db
-        )
+    TransformationFactory("network.expand_arcs").apply_to(m)
+    logger.info("Arc expansion completed")
 
-        # Set CIP system parameters
-        m.fs.cip_system.n_vessels_largest_stage.set_value(largest_stage_vessels)
-        m.fs.cip_system.vessel_diameter_inch.set_value(vessel_diameter_inch)
-        m.fs.cip_system.elements_per_vessel.set_value(elements_per_vessel)
-        m.fs.cip_system.cip_frequency_per_year.set_value(
-            chemical_dosing.get("cip_frequency_per_year", 4)
-        )
-    
     # =================================================================
     # WaterTAPCostingDetailed
     # =================================================================
-    
+
     if economic_params:
         logger.info("Adding WaterTAPCostingDetailed framework...")
-        
+
         m.fs.costing = WaterTAPCostingDetailed()
-        
+
         # Set all economic parameters
         m.fs.costing.wacc.fix(economic_params["wacc"])
         m.fs.costing.plant_lifetime.fix(economic_params["plant_lifetime_years"])
@@ -655,7 +694,7 @@ def build_ro_model_v2(
         m.fs.costing.electricity_cost.fix(
             economic_params["electricity_cost_usd_kwh"]
         )
-        
+
         # Set detailed percentages
         m.fs.costing.land_cost_percent_FCI.fix(
             economic_params.get("land_cost_percent_FCI", 0.0015)
@@ -678,45 +717,43 @@ def build_ro_model_v2(
         m.fs.costing.insurance_and_taxes_percent_FCI.fix(
             economic_params.get("insurance_and_taxes_percent_FCI", 0.002)
         )
-        
+
         # Add unit costing blocks
         _add_unit_costing(m, n_stages, config_data, economic_params, membrane_type)
-        
+
         # Chemical dosing units auto-register their flows with costing
         # No manual registration needed
 
         # Process costs to aggregate
         m.fs.costing.cost_process()
-        
+
         # Add LCOW and SEC
-        product_flow = _get_product_flow(m, n_stages)
-        m.fs.costing.add_LCOW(product_flow)
-        m.fs.costing.add_specific_energy_consumption(product_flow)
-        
+        try:
+            product_flow = _get_product_flow(m, n_stages)
+            logger.info(f"Got product flow for LCOW: {product_flow}")
+
+            # Add LCOW with better error handling
+            m.fs.costing.add_LCOW(product_flow)
+            logger.info("Successfully added LCOW")
+
+            m.fs.costing.add_specific_energy_consumption(product_flow)
+            logger.info("Successfully added SEC")
+        except Exception as e:
+            logger.error(f"Failed to add LCOW/SEC: {e}")
+            logger.warning("Continuing without LCOW/SEC metrics")
+
         # Initialize costing to set initial values and avoid lazy evaluation surprises
         try:
             m.fs.costing.initialize()
         except Exception as _e:
             logger.warning(f"Costing initialize() skipped or failed: {_e}")
-        
+
         logger.info("WaterTAPCostingDetailed framework initialized successfully")
     
     # NOTE: Scaling factors are now calculated in simulate_ro_v2.py after pump initialization
     # This ensures positive Net Driving Pressure (NDP) before FBBT runs
     # calculate_scaling_factors(m)  # Moved to solver to fix FBBT errors
-    
-    # Expand arcs
-    # Debug: Check all arcs before expansion
-    logger.info("Checking all arcs before expansion...")
-    for comp_name in m.fs.component_objects(Arc, active=True):
-        arc = getattr(m.fs, comp_name.local_name)
-        if arc is None:
-            logger.error(f"Arc {comp_name.local_name} is None!")
-        else:
-            logger.debug(f"Arc {comp_name.local_name} exists: {arc}")
-    
-    TransformationFactory("network.expand_arcs").apply_to(m)
-    
+
     return m
 
 
@@ -735,7 +772,14 @@ def _build_ro_stages(m, n_stages, config_data, has_recycle, will_have_erd=False)
         property_package=m.fs.properties,
         outlet_list=["disposal", "recycle"]
     )
-    
+
+    # Add bounds to recycle split fraction to prevent unbounded solutions
+    # Split fractions must be between 0 and 1
+    m.fs.recycle_split.split_fraction[0, "recycle"].setlb(0.0)
+    m.fs.recycle_split.split_fraction[0, "recycle"].setub(1.0)
+    m.fs.recycle_split.split_fraction[0, "disposal"].setlb(0.0)
+    m.fs.recycle_split.split_fraction[0, "disposal"].setub(1.0)
+
     # ALWAYS create feed mixer (even for no-recycle case)
     m.fs.feed_mixer = Mixer(
         property_package=m.fs.properties,
@@ -743,8 +787,9 @@ def _build_ro_stages(m, n_stages, config_data, has_recycle, will_have_erd=False)
         energy_mixing_type=MixingType.none,  # Required for MCAS
         momentum_mixing_type=MomentumMixingType.none
     )
-    
-    # With MomentumMixingType.none, we need to explicitly set outlet pressure
+
+    # With MomentumMixingType.none, we MUST explicitly constrain outlet pressure
+    # This will be deactivated for recycle cases after initialization
     m.fs.mixer_pressure_constraint = Constraint(
         expr=m.fs.feed_mixer.outlet.pressure[0] == m.fs.feed_mixer.fresh.pressure[0]
     )
@@ -768,7 +813,9 @@ def _build_ro_stages(m, n_stages, config_data, has_recycle, will_have_erd=False)
         # Create pump
         pump = Pump(property_package=m.fs.properties)
         setattr(m.fs, f"pump{i}", pump)
-        
+
+        # Note: Bounds will be applied in solver AFTER initialization to prevent turbine mode
+
         # Create RO stage - use v1's proven configuration
         ro = ReverseOsmosis0D(
             property_package=m.fs.properties,
@@ -1082,7 +1129,7 @@ def _add_unit_costing(m, n_stages, config_data, economic_params, membrane_type):
 
 def _get_product_flow(m, n_stages):
     """Get total product flow for LCOW calculation."""
-    
+
     if n_stages == 1:
         # Single stage - use permeate flow directly
         return m.fs.ro_stage1.mixed_permeate[0].flow_vol_phase['Liq']
@@ -1093,12 +1140,12 @@ def _get_product_flow(m, n_stages):
         else:
             # Create Expression if not already created
             from pyomo.environ import Expression
-            
+
             def total_permeate_flow(fs):
                 return sum(
                     getattr(fs, f"ro_stage{i}").mixed_permeate[0].flow_vol_phase['Liq']
                     for i in range(1, n_stages + 1)
                 )
-            
+
             m.fs.total_permeate_flow_vol = Expression(rule=total_permeate_flow)
             return m.fs.total_permeate_flow_vol

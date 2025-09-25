@@ -200,35 +200,30 @@ class CIPSystemZOData(ZeroOrderBaseData):
         acid_kg_s = acid_kg_year / (365 * 24 * 3600)
         base_kg_s = base_kg_year / (365 * 24 * 3600)
 
-        # Register chemical flows with costing package
-        # Create flow variables for registration
-        blk.cip_acid_flow = pyo.Var(
-            initialize=acid_kg_s,
-            units=pyunits.kg/pyunits.s
-        )
-        blk.cip_acid_flow.fix(acid_kg_s)
-
-        blk.cip_base_flow = pyo.Var(
-            initialize=base_kg_s,
-            units=pyunits.kg/pyunits.s
-        )
-        blk.cip_base_flow.fix(base_kg_s)
-
-        # Register flows
-        blk.config.flowsheet_costing_block.cost_flow(
-            blk.cip_acid_flow,
-            "sulfuric_acid"
-        )
-        blk.config.flowsheet_costing_block.cost_flow(
-            blk.cip_base_flow,
-            "caustic_soda"
+        # Store chemical consumption for reporting (don't register flows yet)
+        # The flows will be handled by the model builder if chemicals are configured
+        blk.cip_acid_consumption_kg_year = pyo.Param(
+            initialize=acid_kg_year,
+            mutable=True,
+            doc="Annual acid consumption (kg/year)"
         )
 
-        # Also register pump electricity (minimal)
-        blk.config.flowsheet_costing_block.cost_flow(
-            blk.unit_model.cip_pump_work,
-            "electricity"
+        blk.cip_base_consumption_kg_year = pyo.Param(
+            initialize=base_kg_year,
+            mutable=True,
+            doc="Annual base consumption (kg/year)"
         )
+
+        # Register pump electricity only
+        if hasattr(blk.config, 'flowsheet_costing_block'):
+            try:
+                blk.config.flowsheet_costing_block.cost_flow(
+                    blk.unit_model.cip_pump_work,
+                    "electricity"
+                )
+            except:
+                # Electricity might not be registered yet
+                pass
 
         logger.info(f"CIP System Costing:")
         logger.info(f"  Tank cost: ${tank_cost:,.0f}")

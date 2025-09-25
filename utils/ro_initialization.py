@@ -249,8 +249,10 @@ def initialize_pump_with_pressure(
     
     pump_start = time.time()
     
-    # Fix pressure for stable initialization - convert Pa to proper units
-    pump.outlet.pressure[0].fix(required_pressure * pyunits.Pa)
+    # Fix pressure for stable initialization - try without pyunits again for debugging
+    # from pyomo.environ import units as pyunits
+    # pump.outlet.pressure[0].fix(required_pressure * pyunits.Pa)
+    pump.outlet.pressure[0].fix(required_pressure)  # Pa as float
     logger.info(f"Pump pressure fixed at: {required_pressure/1e5:.1f} bar for initialization")
     
     pump.efficiency_pump.fix(efficiency)
@@ -347,8 +349,8 @@ def initialize_ro_unit_elegant(
         if h2o_flow > 0:
             feed_tds_ppm = (tds_flow / (h2o_flow + tds_flow)) * 1e6
             # Add debug logging
-            logger.info(f"TDS calculation (mass basis): h2o_flow={h2o_flow:.6f} kg/s, tds_flow={tds_flow:.6f} kg/s")
-            logger.info(f"Mass fraction: {tds_flow / (h2o_flow + tds_flow):.6f}, TDS ppm: {feed_tds_ppm:.0f}")
+            logger.debug(f"TDS calculation (mass basis): h2o_flow={h2o_flow:.6f} kg/s, tds_flow={tds_flow:.6f} kg/s")
+            logger.debug(f"Mass fraction: {tds_flow / (h2o_flow + tds_flow):.6f}, TDS ppm: {feed_tds_ppm:.0f}")
         else:
             feed_tds_ppm = 0
     else:

@@ -443,470 +443,6 @@ def refine_recycle_composition(m, config_data, iteration=1):
         logger.info(f"Initial guess was accurate ({error_percent:.1f}% error) - no refinement needed")
 
 
-def calculate_concentrate_osmotic_pressure(ro_stage):
-    """
-    Get osmotic pressure at concentrate/brine outlet.
-    This is the highest osmotic pressure the pump must overcome.
-    """
-    last_point = ro_stage.feed_side.length_domain.last()
-    return value(ro_stage.feed_side.properties[0, last_point].pressure_osm_phase["Liq"])
-
-
-def set_stage_pressures_from_concentrate(m, config_data, fouling=0.92, temp_corr=1.0,
-                                         axial_drop_default=5e4, piping_drop=2e4):
-    """
-    Set pump pressures based on concentrate osmotic pressure.
-    Key insight: Pumps must overcome the brine osmotic pressure, not an average.
-
-    Args:
-        m: Pyomo model
-        config_data: Configuration dictionary with stage data
-        fouling: Fouling factor (0.92 = 8% fouling margin)
-        temp_corr: Temperature correction factor
-        axial_drop_default: Default pressure drop along vessel (Pa)
-        piping_drop: Pressure drop between stages (Pa)
-    """
-    logger.info("=== PRESSURE FIXING: Starting pressure calculation based on concentrate osmotic ===")
-    permeate_pressure = 1e5  # 1 bar
-    n_stages = config_data.get("n_stages", 1)
-
-    # Track TDS for cascading between stages
-    stage_feed_tds_tracker = None
-
-    for idx in range(1, n_stages + 1):
-        ro = getattr(m.fs, f"ro_stage{idx}")
-        pump = getattr(m.fs, f"pump{idx}")
-        stage_cfg = config_data["stages"][idx-1]
-
-        # Calculate stage-specific osmotic pressures
-        stage_recovery = stage_cfg.get("stage_recovery", stage_cfg.get("target_recovery", 0.5))
-        cp_factor = 1.05  # Concentration polarization factor
-
-        # Determine feed TDS and osmotic pressure for this stage
-        if idx == 1:
-            # First stage: use fresh feed
-            stage_feed_tds = config_data.get("feed_salinity_ppm", 5000)
-            pi_stage_feed = stage_feed_tds * 80  # Pa (0.8 bar per 1000 ppm)
-            logger.info(f"Stage 1 feed TDS: {stage_feed_tds} ppm, osmotic: {pi_stage_feed/1e5:.2f} bar")
-        else:
-            # Subsequent stages: feed TDS is previous stage's concentrate TDS
-            # Get the previous stage's feed TDS (stored)
-            prev_feed_tds = stage_feed_tds_tracker
-            prev_stage_cfg = config_data['stages'][idx-2]
-            prev_recovery = prev_stage_cfg.get('stage_recovery', 0.5)
-            # Calculate previous stage concentrate TDS
-            stage_feed_tds = prev_feed_tds / max(0.01, 1 - prev_recovery)
-            pi_stage_feed = stage_feed_tds * 80  # Pa
-            logger.info(f"Stage {idx} feed TDS: {stage_feed_tds:.0f} ppm, osmotic: {pi_stage_feed/1e5:.2f} bar")
-
-        # Save this stage's feed TDS for next stage
-        stage_feed_tds_tracker = stage_feed_tds
-
-        # Calculate THIS stage's concentrate osmotic
-        # Stage concentrate TDS = Stage feed TDS / (1 - stage recovery)
-        stage_concentrate_tds = stage_feed_tds / max(0.01, 1 - stage_recovery)
-        pi_concentrate_bulk = stage_concentrate_tds * 80  # Pa
-        pi_concentrate = pi_concentrate_bulk * cp_factor  # Apply CP factor
-
-        logger.info(f"Stage {idx} concentrate TDS: {stage_concentrate_tds:.0f} ppm")
-        logger.info(f"PRESSURE FIXING Stage {idx}: Concentrate osmotic = {pi_concentrate/1e5:.2f} bar (with CP={cp_factor})")
-
-        # Store for refinement loop
-        setattr(m, f'_design_pi_stage{idx}_feed', pi_stage_feed)
-        setattr(m, f'_design_pi_stage{idx}_conc', pi_concentrate)
-        setattr(m, f'_target_recovery_stage{idx}', stage_recovery)
-
-        # Calculate required net driving pressure for target flux
-        target_flux_lmh = stage_cfg.get("design_flux_lmh", 18.0)
-        target_flux = target_flux_lmh / 3.6e6  # Convert to kg/m²/s
-
-        # Get effective membrane permeability
-        try:
-            # Try different indexing patterns for A_comp
-            if hasattr(ro, 'A_comp'):
-                try:
-                    A_clean = value(ro.A_comp[0, "H2O"])  # Try without phase
-                except:
-                    try:
-                        A_clean = value(ro.A_comp[0, 'Liq', "H2O"])  # Try with phase
-                    except:
-                        A_clean = 2e-12  # Default value
-            else:
-                A_clean = 2e-12
-        except:
-            A_clean = 2e-12  # Conservative fallback
-        A_eff = A_clean * fouling * temp_corr
-        ndp_required = target_flux / max(A_eff, 1e-12)
-
-        # Pump must overcome: concentrate osmotic + NDP + permeate pressure + half axial drop
-        # Add 5% safety factor for initial estimate (reduced from 15% to avoid overshooting)
-        axial_drop = stage_cfg.get("axial_pressure_drop_pa", axial_drop_default)
-        required_pressure = (pi_concentrate + ndp_required + permeate_pressure + 0.5 * axial_drop) * 1.05
-
-        logger.info(f"Stage {idx}: Setting pump pressure to {required_pressure/1e5:.2f} bar")
-        logger.info(f"  (osmotic: {pi_concentrate/1e5:.2f} + NDP: {ndp_required/1e5:.2f} + perm: {permeate_pressure/1e5:.2f})")
-
-        # Fix pump outlet pressure
-        pump.outlet.pressure[0].fix(required_pressure)
-        if hasattr(pump, "deltaP"):
-            inlet_pressure = value(pump.inlet.pressure[0])
-            pump.deltaP[0].fix(required_pressure - inlet_pressure)
-
-        # Set retentate outlet pressure for consistency
-        # Skip this for now - not critical for pressure fixing
-        # Different RO model versions have different retentate pressure indexing
-
-        # Set up next stage inlet (uses this stage's concentrate pressure)
-        if idx < n_stages:
-            next_pump = getattr(m.fs, f"pump{idx+1}")
-            next_inlet_pressure = required_pressure - axial_drop - piping_drop
-            next_pump.inlet.pressure[0].fix(max(1e5, next_inlet_pressure))
-            logger.info(f"  Stage {idx+1} inlet pressure = {next_inlet_pressure/1e5:.2f} bar")
-
-
-def refine_pressures_iteratively(m, config_data, max_iter=2, relax=0.35, tolerance=0.02):
-    """
-    Iteratively refine pressures to achieve target flux.
-    Usually converges in 1-2 iterations.
-
-    Args:
-        m: Pyomo model
-        config_data: Configuration dictionary
-        max_iter: Maximum iterations
-        relax: Relaxation factor for pressure adjustment
-        tolerance: Target flux error tolerance
-
-    Returns:
-        bool: True if converged within tolerance
-    """
-    logger.info("=== PRESSURE FIXING: Starting iterative refinement ===")
-    solver = get_solver()
-    n_stages = config_data.get("n_stages", 1)
-
-    for iteration in range(max_iter):
-        logger.info(f"\n--- Refinement iteration {iteration+1} ---")
-
-        # Quick solve with fixed pressures
-        results = solver.solve(m, tee=False, options={
-            "max_iter": 100,
-            "tol": 1e-6,
-            "print_level": 0
-        })
-
-        if not check_solver_status(results, context=f"Refinement iteration {iteration+1}", raise_on_fail=False):
-            logger.warning(f"Solver failed during refinement iteration {iteration+1}")
-            return False
-
-        max_error = 0.0
-        for idx in range(1, n_stages + 1):
-            ro = getattr(m.fs, f"ro_stage{idx}")
-            pump = getattr(m.fs, f"pump{idx}")
-            stage_cfg = config_data["stages"][idx-1]
-
-            # Measure flux error
-            target_flux_lmh = stage_cfg.get("design_flux_lmh", 18.0)
-            target_flux = target_flux_lmh / 3.6e6  # kg/m²/s
-            actual_flux = value(ro.flux_mass_phase_comp_avg[0, "Liq", "H2O"])
-            error = (actual_flux - target_flux) / max(target_flux, 1e-12)
-            max_error = max(max_error, abs(error))
-
-            logger.info(f"  Stage {idx}: Target flux = {target_flux_lmh:.1f} LMH, Actual = {actual_flux*3.6e6:.1f} LMH, Error = {error*100:+.1f}%")
-
-            # Get stored design osmotic pressures
-            stage_recovery = stage_cfg.get("stage_recovery", stage_cfg.get("target_recovery", 0.5))
-            cp_factor = 1.05  # Use same CP factor as initial calculation
-
-            # Use the stored design concentrate osmotic from pressure fixing
-            pi_concentrate_design = getattr(m, f'_design_pi_stage{idx}_conc', None)
-            if pi_concentrate_design is None:
-                # Fallback calculation if not stored
-                if idx == 1:
-                    feed_tds = config_data.get("feed_salinity_ppm", 5000)
-                else:
-                    prev_recovery = config_data['stages'][idx-2].get('stage_recovery', 0.5)
-                    prev_feed_tds = getattr(m, f'_stage{idx-1}_feed_tds', 5000)
-                    feed_tds = prev_feed_tds / (1 - prev_recovery)
-
-                conc_tds = feed_tds / (1 - stage_recovery)
-                pi_concentrate_design = conc_tds * 80 * cp_factor  # Pa
-
-            # Also get current concentrate osmotic
-            pi_concentrate_current = calculate_concentrate_osmotic_pressure(ro)
-
-            # Check if we're close to target recovery
-            current_recovery = value(ro.recovery_mass_phase_comp[0, "Liq", "H2O"])
-            recovery_error = abs(current_recovery - stage_recovery)
-
-            # Use 100% design osmotic until we're close to target (within 5%)
-            # This prevents collapse to low-recovery state
-            if recovery_error > 0.05:
-                pi_concentrate_blend = pi_concentrate_design  # 100% design
-                logger.info(f"    Using 100% design osmotic (recovery error {recovery_error:.1%} > 5%)")
-            else:
-                # Only blend when close to target for fine-tuning
-                pi_concentrate_blend = 0.7 * pi_concentrate_design + 0.3 * pi_concentrate_current
-                logger.info(f"    Using blended osmotic (recovery error {recovery_error:.1%} <= 5%)")
-
-            logger.info(f"    Osmotic - Design: {pi_concentrate_design/1e5:.2f} bar, Current: {pi_concentrate_current/1e5:.2f} bar, Used: {pi_concentrate_blend/1e5:.2f} bar")
-
-            # Store design concentrate for next stage
-            setattr(m, f'_refine_pi_stage{idx}_conc', pi_concentrate_design)
-
-            # Get current membrane permeability
-            A_eff = value(ro.A_comp[0, "Liq", "H2O"]) * 0.92 * 1.0  # fouling * temp_corr
-
-            # Calculate required NDP for target flux
-            ndp_target = target_flux / max(1e-12, A_eff)
-
-            # Get pressure drop parameters
-            axial_drop = stage_cfg.get("axial_pressure_drop_pa", 5e4)
-            permeate_pressure = 1e5  # 1 bar
-
-            # Calculate required pressure using BLENDED osmotic
-            required_pressure = pi_concentrate_blend + ndp_target + permeate_pressure + 0.5 * axial_drop
-
-            # Blend with current pressure for stability using relaxation factor
-            current_pressure = value(pump.outlet.pressure[0])
-            new_pressure = current_pressure * (1 - relax) + required_pressure * relax
-            pump.outlet.pressure[0].fix(new_pressure)
-
-            logger.info(f"    Required pressure: {required_pressure/1e5:.2f} bar")
-            logger.info(f"    Adjusting pressure: {current_pressure/1e5:.2f} → {new_pressure/1e5:.2f} bar")
-
-            # CRITICAL: Update ALL pressure-related variables to maintain consistency
-            if hasattr(pump, "deltaP"):
-                inlet_pressure = value(pump.inlet.pressure[0])
-                pump.deltaP[0].fix(new_pressure - inlet_pressure)
-
-            # Update retentate pressure at membrane outlet
-            if hasattr(ro, "retentate") and hasattr(ro.retentate, "pressure"):
-                last_point = ro.feed_side.length_domain.last()
-                axial_drop = stage_cfg.get("axial_pressure_drop_pa", 5e4)
-                ro.retentate.pressure[0, last_point].fix(new_pressure - axial_drop)
-
-            # Update next stage inlet pressure
-            if idx < n_stages:
-                next_pump = getattr(m.fs, f"pump{idx+1}")
-                piping_drop = config_data.get("piping_drop_pa", 2e4)
-                axial_drop = stage_cfg.get("axial_pressure_drop_pa", 5e4)
-                next_inlet = new_pressure - axial_drop - piping_drop
-                next_pump.inlet.pressure[0].fix(max(1e5, next_inlet))
-
-        logger.info(f"Maximum flux error after iteration {iteration+1}: {max_error*100:.1f}%")
-
-        if max_error < tolerance:
-            logger.info(f"✓ Converged in {iteration+1} iterations!")
-            return True
-
-    logger.info(f"Reached max iterations. Final max error: {max_error*100:.1f}%")
-    return max_error < 0.05  # Accept if within 5%
-
-
-def _set_stage_pressure_consistent(m, stage_idx, new_pressure_or_factor, config_data, is_factor=True):
-    """
-    Helper function to adjust pump pressure and maintain consistency across all related variables.
-
-    Args:
-        m: Pyomo model
-        stage_idx: Stage index (1-based)
-        new_pressure_or_factor: Either new pressure in Pa (if is_factor=False) or adjustment factor
-        config_data: Configuration dictionary
-        is_factor: If True, multiply current pressure by the value; if False, set absolute pressure
-    """
-    pump = getattr(m.fs, f"pump{stage_idx}")
-    ro = getattr(m.fs, f"ro_stage{stage_idx}")
-    n_stages = config_data.get('n_stages', 1)
-
-    # Get pressure drops
-    axial_drop = config_data['stages'][stage_idx-1].get('axial_pressure_drop_pa', 5e4)
-    piping_drop = config_data.get('piping_drop_pa', 2e4)
-
-    # Calculate new pump outlet pressure
-    if is_factor:
-        current_pressure = value(pump.outlet.pressure[0])
-        new_pressure = current_pressure * new_pressure_or_factor
-    else:
-        new_pressure = new_pressure_or_factor
-
-    # Bound pressure to reasonable range (10-80 bar)
-    new_pressure = max(10e5, min(80e5, new_pressure))
-    pump.outlet.pressure[0].fix(new_pressure)
-
-    # Sync deltaP if exists
-    if hasattr(pump, "deltaP"):
-        inlet_pressure = value(pump.inlet.pressure[0])
-        pump.deltaP[0].fix(new_pressure - inlet_pressure)
-
-    # Sync retentate outlet pressure
-    if hasattr(ro, "retentate") and hasattr(ro.retentate, "pressure"):
-        last_point = ro.feed_side.length_domain.last()
-        ro.retentate.pressure[0].fix(new_pressure - axial_drop)
-
-    # Sync next stage inlet pressure
-    if stage_idx < n_stages:
-        next_pump = getattr(m.fs, f"pump{stage_idx+1}")
-        next_inlet = new_pressure - axial_drop - piping_drop
-        next_pump.inlet.pressure[0].fix(max(1e5, next_inlet))
-
-
-def calculate_system_recovery(m, config_data):
-    """
-    Calculate overall system recovery for the RO model.
-
-    Args:
-        m: Pyomo model
-        config_data: Configuration dictionary
-
-    Returns:
-        float: System recovery fraction (0-1)
-    """
-    n_stages = config_data.get('n_stages', 1)
-    recycle_info = config_data.get('recycle_info', {})
-    has_recycle = recycle_info.get('uses_recycle', False)
-
-    if has_recycle:
-        # For recycle systems, recovery = (fresh_feed - disposal) / fresh_feed
-        feed_h2o = value(m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-        if hasattr(m.fs, 'disposal_product'):
-            disposal_h2o = value(m.fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-        else:
-            # Fallback: use concentrate from last stage
-            last_ro = getattr(m.fs, f"ro_stage{n_stages}")
-            disposal_h2o = value(last_ro.retentate.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-        system_recovery = (feed_h2o - disposal_h2o) / feed_h2o if feed_h2o > 0 else 0
-    else:
-        # For non-recycle: recovery = total_permeate / feed
-        total_permeate = sum(
-            value(getattr(m.fs, f"ro_stage{i}").mixed_permeate[0].flow_mass_phase_comp['Liq', 'H2O'])
-            for i in range(1, n_stages + 1)
-        )
-        if hasattr(m.fs, 'fresh_feed'):
-            try:
-                feed_h2o = value(m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-            except:
-                # Try without indexing into properties
-                feed_h2o = value(m.fs.fresh_feed.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-        else:
-            try:
-                feed_h2o = value(m.fs.feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-            except:
-                # Try without properties indexing
-                feed_h2o = value(m.fs.feed.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-        system_recovery = total_permeate / feed_h2o if feed_h2o > 0 else 0
-
-    return system_recovery
-
-
-def refine_pressures_for_recovery(m, config_data, max_iter=10, Kp=1.6, Ki=0.16, tolerance=0.01):
-    """
-    PI controller to achieve target recovery by adjusting pump pressures.
-    Controls each stage independently to meet its specific recovery target.
-
-    Args:
-        m: Pyomo model
-        config_data: Configuration dictionary
-        max_iter: Maximum iterations
-        Kp: Proportional gain (typical: 1.4-1.8)
-        Ki: Integral gain (typical: 0.1-0.2 * Kp)
-        tolerance: Recovery error tolerance (0.01 = ±1%)
-
-    Returns:
-        bool: True if converged within tolerance
-    """
-    logger.info("=== Starting Stage-wise Recovery-Based PI Control ===")
-    logger.info(f"System target recovery: {config_data['target_recovery']*100:.1f}%")
-    logger.info(f"Control parameters: Kp={Kp}, Ki={Ki}, tolerance={tolerance*100:.1f}%")
-
-    solver = get_solver()
-    n_stages = config_data.get('n_stages', 1)
-    system_target = config_data.get('target_recovery', 0.75)
-
-    # Initialize PI control state for each stage
-    stage_integral_errors = [0] * (n_stages + 1)  # 1-indexed
-    stage_prev_error_signs = [0] * (n_stages + 1)
-
-    for iteration in range(max_iter):
-        logger.info(f"\n--- Recovery Control Iteration {iteration+1} ---")
-
-        # Solve current state
-        results = solver.solve(m, tee=False, options={
-            'max_iter': 100,
-            'tol': 1e-6,
-            'print_level': 0
-        })
-
-        if not check_solver_status(results, context=f"Recovery iteration {iteration+1}", raise_on_fail=False):
-            logger.warning(f"Solver failed during recovery iteration {iteration+1}")
-            return False
-
-        # Track convergence for all stages
-        all_stages_converged = True
-        max_stage_error = 0
-
-        # Apply PI control to each stage independently
-        for stage_idx in range(1, n_stages + 1):
-            ro = getattr(m.fs, f"ro_stage{stage_idx}")
-            pump = getattr(m.fs, f"pump{stage_idx}")
-            stage_cfg = config_data['stages'][stage_idx - 1]
-
-            # Get stage-specific target recovery
-            stage_target = stage_cfg.get('stage_recovery', stage_cfg.get('target_recovery', 0.5))
-
-            # Measure actual stage recovery
-            actual_recovery = value(ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'])
-            recovery_error = (actual_recovery - stage_target) / stage_target
-            max_stage_error = max(max_stage_error, abs(recovery_error))
-
-            logger.info(f"Stage {stage_idx}: Target={stage_target*100:.1f}%, Actual={actual_recovery*100:.1f}%, Error={recovery_error*100:+.2f}%")
-
-            # Check if this stage has converged
-            if abs(recovery_error) > tolerance:
-                all_stages_converged = False
-
-                # Anti-windup: Reset integral if error changes sign
-                error_sign = 1 if recovery_error > 0 else -1
-                if error_sign != stage_prev_error_signs[stage_idx] and stage_prev_error_signs[stage_idx] != 0:
-                    stage_integral_errors[stage_idx] = 0
-                    logger.info(f"Stage {stage_idx}: Integral reset (anti-windup)")
-                stage_prev_error_signs[stage_idx] = error_sign
-
-                # Accumulate integral error for this stage
-                stage_integral_errors[stage_idx] += recovery_error
-
-                # Gain scheduling: reduce gain when close to target
-                if abs(recovery_error) < 0.05:
-                    effective_Kp = Kp * 0.6  # Reduce gain near target
-                else:
-                    effective_Kp = Kp
-
-                # PI control calculation for this stage
-                proportional_term = effective_Kp * recovery_error
-                integral_term = Ki * stage_integral_errors[stage_idx]
-                adjust_factor = 1 - proportional_term - integral_term
-
-                # Bound adjustment factor
-                adjust_factor = max(0.85, min(1.15, adjust_factor))  # Tighter bounds for per-stage control
-
-                # Apply adjustment to this stage's pump
-                old_pressure = value(pump.outlet.pressure[0])
-                _set_stage_pressure_consistent(m, stage_idx, adjust_factor, config_data, is_factor=True)
-                new_pressure = value(pump.outlet.pressure[0])
-                logger.info(f"Stage {stage_idx} PI: P={-proportional_term:+.3f}, I={-integral_term:+.3f}, {old_pressure/1e5:.2f}→{new_pressure/1e5:.2f} bar")
-
-        # Check system recovery as well
-        system_actual = calculate_system_recovery(m, config_data)
-        system_error = (system_actual - system_target) / system_target
-        logger.info(f"System: Target={system_target*100:.1f}%, Actual={system_actual*100:.1f}%, Error={system_error*100:+.2f}%")
-
-        # Converged if all stages AND system are within tolerance
-        if all_stages_converged and abs(system_error) < tolerance:
-            logger.info(f"✓ All stages and system converged in {iteration+1} iterations!")
-            return True
-
-    logger.info(f"Reached max iterations. Max stage error: {max_stage_error*100:.2f}%")
-    return max_stage_error < 0.05  # Accept if within 5%
-
-
 def initialize_and_solve_mcas(model, config_data, optimize_pumps=True, use_staged_solve=True):
     """
     Initialize and solve RO model with MCAS property package and recycle.
@@ -1512,164 +1048,795 @@ def initialize_and_solve_mcas(model, config_data, optimize_pumps=True, use_stage
             if not check_solver_status(results, context="Initial solve", raise_on_fail=False):
                 logger.warning("Initial solve not optimal, but proceeding...")
         
-        # If optimize_pumps, use the new pressure-fixing approach
+        # If optimize_pumps, unfix pumps and add recovery constraints
         if optimize_pumps:
-            logger.info("\n=== Using Pressure-Fixing Approach Based on Concentrate Osmotic Pressure ===")
+            logger.info("\n=== Setting up Pump Optimization ===")
+            
+            # First verify we have a feasible initial solution
+            # Get solver (no parameters to get_solver)
+            solver = get_solver()
+            
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] Verifying initial solution...")
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] About to call solver.solve() for verification")
+            results = solver.solve(m, tee=False, options={
+                'linear_solver': 'ma27',
+                'max_cpu_time': 300,  # 5 minutes for verification
+                'tol': 1e-5,  # Relaxed for faster convergence
+                'constr_viol_tol': 1e-5,
+                'print_level': 0  # Suppress all IPOPT output
+            })
+            logger.info(f"[TIMING {time.time()-start_time:.1f}s] solver.solve() verification completed")
+            
+            if not check_solver_status(results, context="Initial verification", raise_on_fail=False):
+                logger.warning("Initial solution not optimal, but proceeding with pump optimization...")
+            
+            # Now unfix pumps and add recovery constraints
+            membrane_type_cfg = config_data.get('membrane_type', getattr(m, 'membrane_type', 'brackish'))
+            is_seawater_case = (membrane_type_cfg == 'seawater')
 
-            try:
-                # Step 1: Set initial pressures based on concentrate osmotic pressure
-                logger.info("\nStep 1: Setting initial pump pressures based on concentrate osmotic pressure...")
-                logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting pressure calculation")
+            if is_seawater_case:
+                # Unfix all pump pressures
+                for i in range(1, n_stages + 1):
+                    pump = getattr(m.fs, f"pump{i}")
+                    pump.outlet.pressure[0].unfix()
+                    logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
 
-                # Get configuration parameters
-                fouling = config_data.get('fouling_factor', 0.92)
-                temp_corr = config_data.get('temperature_correction', 1.0)
-                axial_drop = config_data.get('axial_pressure_drop_pa', 5e4)
-                piping_drop = config_data.get('piping_drop_pa', 2e4)
+                    # Set realistic pressure bounds based on design pressure
+                    design_pressure_bar = stage_data.get('feed_pressure_bar', 10)
 
-                # Set pressures based on concentrate osmotic
-                set_stage_pressures_from_concentrate(
-                    m, config_data,
-                    fouling=fouling,
-                    temp_corr=temp_corr,
-                    axial_drop_default=axial_drop,
-                    piping_drop=piping_drop
-                )
+                    # Determine tolerance based on stage and system type
+                    stage_tds_ppm = config_data.get('feed_salinity_ppm', 5000) * (1.5 ** (i - 1))  # Estimate TDS increase
+                    membrane_type = config_data.get('membrane_model', 'BW30').lower()
 
-                # Step 2: Quick initial solve with fixed pressures
-                logger.info("\nStep 2: Initial solve with fixed pressures...")
-                logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting initial solve")
-                solver = get_solver()
-                results = solver.solve(m, tee=False, options={
-                    'linear_solver': 'ma27',
-                    'max_iter': 100,
-                    'tol': 1e-6,
-                    'print_level': 0
-                })
+                    if 'sw' in membrane_type or stage_tds_ppm >= 30000:
+                        pressure_tolerance = 0.5  # ±50% for seawater
+                    elif i >= 2:  # Later stages
+                        pressure_tolerance = 0.4  # ±40% for high-recovery stages
+                    else:  # Stage 1 brackish
+                        pressure_tolerance = 0.3  # ±30% for first stage
 
-                if not check_solver_status(results, context="Initial pressure-fixed solve", raise_on_fail=False):
-                    logger.warning("Initial solve with fixed pressures not optimal")
+                    # Apply bounds without arbitrary min/max limits
+                    min_pressure_bar = design_pressure_bar * (1 - pressure_tolerance)
+                    max_pressure_bar = design_pressure_bar * (1 + pressure_tolerance)
 
-                # Step 3: Two-phase refinement
-                logger.info("\nStep 3: Two-phase refinement (flux alignment + recovery control)...")
-                logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting refinement")
+                    # Keep physical minimum only where necessary
+                    if min_pressure_bar < 2:  # Below 2 bar is physically unrealistic
+                        min_pressure_bar = 2
+                    # Remove the 60 bar ceiling - let seawater go higher if needed
 
-                # Phase 1: Quick flux alignment (optional)
-                flux_converged = False
-                if config_data.get('enable_flux_prealignment', True):
-                    logger.info("\nPhase 1: Flux pre-alignment...")
-                    flux_converged = refine_pressures_iteratively(
-                        m, config_data,
-                        max_iter=2,  # Just 1-2 iterations to get close
-                        relax=0.5,
-                        tolerance=0.05  # Looser tolerance for pre-alignment
-                    )
-                    if flux_converged:
-                        logger.info("✓ Flux pre-alignment completed")
+                    if hasattr(pump, 'deltaP'):
+                        pump.deltaP[0].setlb(min_pressure_bar * 1e5)
+                        pump.deltaP[0].setub(max_pressure_bar * 1e5)
+                        logger.info(f"Stage {i}: Set pump ΔP bounds [{min_pressure_bar:.1f}, {max_pressure_bar:.1f}] bar")
                     else:
-                        logger.info("Flux pre-alignment did not fully converge, proceeding to recovery control")
+                        # Fallback: bound outlet pressure relative to inlet
+                        inlet_p = value(pump.inlet.pressure[0])
+                        pump.outlet.pressure[0].setlb(inlet_p + min_pressure_bar * 1e5)
+                        pump.outlet.pressure[0].setub(inlet_p + max_pressure_bar * 1e5)
+                        logger.info(f"Stage {i}: Set outlet pressure bounds [inlet+{min_pressure_bar:.1f}, inlet+{max_pressure_bar:.1f}] bar")
 
-                # Phase 2: Recovery-based PI control (main convergence)
-                logger.info("\nPhase 2: Recovery-based control...")
-                recovery_converged = refine_pressures_for_recovery(
-                    m, config_data,
-                    max_iter=10,
-                    Kp=1.6,
-                    Ki=0.16,
-                    tolerance=0.01  # ±1% recovery tolerance
+                    # Also prevent negative work
+                    if hasattr(pump, 'work_mechanical'):
+                        pump.work_mechanical[0].setlb(0)
+                        logger.info(f"Stage {i}: Set minimum pump work to 0 (no turbine mode)")
+
+                # Add a single system-level recovery constraint (inequality) to avoid infeasibility
+                system_target = config_data.get('achieved_recovery', 0.45)
+                system_tol = 0.05  # Allow 5% tolerance for seawater systems
+
+                feed_h2o = m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O']
+                total_perm_h2o = sum(
+                    getattr(m.fs, f"ro_stage{i}").mixed_permeate[0].flow_mass_phase_comp['Liq', 'H2O']
+                    for i in range(1, n_stages + 1)
                 )
 
-                converged = recovery_converged
-                if converged:
-                    logger.info("\n✓ Recovery control converged successfully!")
+                setattr(m.fs, 'system_recovery_constraint',
+                        Constraint(expr=total_perm_h2o >= (system_target - system_tol) * feed_h2o))
+                logger.info(f"Added system recovery constraint: >= {(system_target - system_tol):.3f} of feed H2O")
 
-                    # Optional Step 4: Final polish with narrow bounds
-                    if config_data.get('enable_final_polish', False):
-                        logger.info("\nStep 4: Final optimization within ±5% bounds...")
-                        logger.info(f"[TIMING {time.time()-start_time:.1f}s] Starting final polish")
+                # Add flux constraints for seawater configuration
+                for i in range(1, n_stages + 1):
+                    ro = getattr(m.fs, f"ro_stage{i}")
+                    stage_data = config_data['stages'][i-1]
+                    target_flux_lmh = stage_data.get('flux_target_lmh')
+                    if False and target_flux_lmh:  # TEMPORARILY DISABLED FOR DEBUGGING
+                        # Convert LMH to kg/m²/s (WaterTAP internal units)
+                        target_flux_kg_m2_s = target_flux_lmh * 2.778e-4
 
-                        for idx in range(1, n_stages + 1):
-                            pump = getattr(m.fs, f"pump{idx}")
-                            nominal = value(pump.outlet.pressure[0])
-                            pump.outlet.pressure[0].unfix()
-                            pump.outlet.pressure[0].setlb(nominal * 0.95)
-                            pump.outlet.pressure[0].setub(nominal * 1.05)
-                            logger.info(f"Stage {idx}: Unfixed pressure with bounds [{nominal*0.95/1e5:.2f}, {nominal*1.05/1e5:.2f}] bar")
+                        # Apply average flux constraint instead of constraining every point
+                        # This is less restrictive and should help convergence
+                        from pyomo.environ import sum_product
+                        n_points = len(ro.feed_side.length_domain)
+                        avg_flux = sum(ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O']
+                                     for x in ro.feed_side.length_domain) / n_points
+                        flux_avg_name = f"flux_avg_constraint_stage{i}"
+                        setattr(m.fs, flux_avg_name,
+                                Constraint(expr=avg_flux >= target_flux_kg_m2_s))
+                        logger.info(f"Stage {i}: Added average flux constraint >= {target_flux_lmh:.1f} LMH")
 
-                        # Simple objective to minimize pressure
-                        from pyomo.environ import Objective, minimize
-                        pressure_sum = sum(
-                            getattr(m.fs, f"pump{i}").outlet.pressure[0]
-                            for i in range(1, n_stages + 1)
+            else:
+                for i in range(1, n_stages + 1):
+                    pump = getattr(m.fs, f"pump{i}")
+                    ro = getattr(m.fs, f"ro_stage{i}")
+                    stage_data = config_data['stages'][i-1]
+                    target_recovery = stage_data.get('stage_recovery', 0.5)
+
+                    # Unfix pump pressure
+                    pump.outlet.pressure[0].unfix()
+                    logger.info(f"Stage {i}: Unfixed pump pressure (was {value(pump.outlet.pressure[0])/1e5:.1f} bar)")
+
+                    # Set realistic pressure bounds based on design pressure
+                    design_pressure_bar = stage_data.get('feed_pressure_bar', 10)
+
+                    # Determine tolerance based on stage and system type
+                    stage_tds_ppm = config_data.get('feed_salinity_ppm', 5000) * (1.5 ** (i - 1))  # Estimate TDS increase
+                    membrane_type = config_data.get('membrane_model', 'BW30').lower()
+
+                    if 'sw' in membrane_type or stage_tds_ppm >= 30000:
+                        pressure_tolerance = 0.5  # ±50% for seawater
+                    elif i >= 2:  # Later stages
+                        pressure_tolerance = 0.4  # ±40% for high-recovery stages
+                    else:  # Stage 1 brackish
+                        pressure_tolerance = 0.3  # ±30% for first stage
+
+                    # Apply bounds without arbitrary min/max limits
+                    min_pressure_bar = design_pressure_bar * (1 - pressure_tolerance)
+                    max_pressure_bar = design_pressure_bar * (1 + pressure_tolerance)
+
+                    # Keep physical minimum only where necessary
+                    if min_pressure_bar < 2:  # Below 2 bar is physically unrealistic
+                        min_pressure_bar = 2
+                    # Remove the 60 bar ceiling - let seawater go higher if needed
+
+                    if hasattr(pump, 'deltaP'):
+                        pump.deltaP[0].setlb(min_pressure_bar * 1e5)
+                        pump.deltaP[0].setub(max_pressure_bar * 1e5)
+                        logger.info(f"Stage {i}: Set pump ΔP bounds [{min_pressure_bar:.1f}, {max_pressure_bar:.1f}] bar")
+                    else:
+                        # Fallback: bound outlet pressure relative to inlet
+                        inlet_p = value(pump.inlet.pressure[0])
+                        pump.outlet.pressure[0].setlb(inlet_p + min_pressure_bar * 1e5)
+                        pump.outlet.pressure[0].setub(inlet_p + max_pressure_bar * 1e5)
+                        logger.info(f"Stage {i}: Set outlet pressure bounds [inlet+{min_pressure_bar:.1f}, inlet+{max_pressure_bar:.1f}] bar")
+
+                    # Also prevent negative work
+                    if hasattr(pump, 'work_mechanical'):
+                        pump.work_mechanical[0].setlb(0)
+                        logger.info(f"Stage {i}: Set minimum pump work to 0 (no turbine mode)")
+
+                    # Only use flux constraint - recovery will follow automatically
+                    # With fixed membrane area: recovery = flux × area / feed_flow
+                    target_flux_lmh = stage_data.get('flux_target_lmh')
+                    if target_flux_lmh:  # Re-enabled
+                        # Convert LMH to kg/m²/s (WaterTAP internal units)
+                        target_flux_kg_m2_s = target_flux_lmh * 2.778e-4
+
+                        # Apply average flux constraint instead of constraining every point
+                        # This is less restrictive and should help convergence
+                        from pyomo.environ import sum_product
+                        n_points = len(ro.feed_side.length_domain)
+                        avg_flux = sum(ro.flux_mass_phase_comp[0, x, 'Liq', 'H2O']
+                                     for x in ro.feed_side.length_domain) / n_points
+                        flux_avg_name = f"flux_avg_constraint_stage{i}"
+                        setattr(m.fs, flux_avg_name,
+                                Constraint(expr=avg_flux >= target_flux_kg_m2_s))
+                        logger.info(f"Stage {i}: Added average flux constraint >= {target_flux_lmh:.1f} LMH")
+                        logger.info(f"Stage {i}: Recovery will be determined by flux × area / feed_flow")
+                    elif not use_staged_solve:
+                        # Fallback to recovery constraint if no flux target provided
+                        constraint_name = f"recovery_constraint_stage{i}"
+                        recovery_tolerance = 0.01  # Allow 1% tolerance (legacy behaviour)
+                        setattr(
+                            m.fs,
+                            constraint_name,
+                            Constraint(expr=ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'] >= target_recovery - recovery_tolerance),
                         )
-                        m.fs.minimize_pressure = Objective(expr=pressure_sum, sense=minimize)
-
-                        results = solver.solve(m, tee=False, options={
-                            'linear_solver': 'ma27',
-                            'max_iter': 200,
-                            'tol': 1e-7,
-                            'print_level': 0
-                        })
-
-                        if check_solver_status(results, context="Final polish", raise_on_fail=False):
-                            logger.info("✓ Final optimization completed successfully")
-                        else:
-                            logger.warning("Final polish did not converge optimally")
-                else:
-                    logger.warning("Pressure refinement did not fully converge, but proceeding with best solution")
-
-                # Log final results
-                logger.info("\n=== Final Results ====")
-                for idx in range(1, n_stages + 1):
-                    pump = getattr(m.fs, f"pump{idx}")
-                    ro = getattr(m.fs, f"ro_stage{idx}")
-                    pressure = value(pump.outlet.pressure[0])
-                    flux = value(ro.flux_mass_phase_comp_avg[0, 'Liq', 'H2O'])
-                    recovery = value(ro.recovery_mass_phase_comp[0, 'Liq', 'H2O'])
-
-                    logger.info(f"Stage {idx}:")
-                    logger.info(f"  Pressure: {pressure/1e5:.2f} bar")
-                    logger.info(f"  Flux: {flux*3.6e6:.1f} LMH")
-                    logger.info(f"  Recovery: {recovery*100:.1f}%")
-
-                # Calculate system recovery
-                if has_recycle:
-                    feed_h2o = value(m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-                    disposal_h2o = value(m.fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-                    system_recovery = (feed_h2o - disposal_h2o) / feed_h2o if feed_h2o > 0 else 0
-                else:
-                    total_permeate = sum(
-                        value(getattr(m.fs, f"ro_stage{i}").mixed_permeate[0].flow_mass_phase_comp['Liq', 'H2O'])
-                        for i in range(1, n_stages + 1)
-                    )
-                    # Get feed H2O flow - try different attribute names
-                    if hasattr(m.fs, 'fresh_feed'):
-                        try:
-                            feed_h2o = value(m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-                        except:
-                            feed_h2o = value(m.fs.fresh_feed.flow_mass_phase_comp[0, 'Liq', 'H2O'])
-                    elif hasattr(m.fs, 'feed'):
-                        try:
-                            feed_h2o = value(m.fs.feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
-                        except:
-                            feed_h2o = value(m.fs.feed.flow_mass_phase_comp[0, 'Liq', 'H2O'])
+                        logger.info(
+                            f"Stage {i}: No flux target, using recovery constraint: {target_recovery - recovery_tolerance:.3f} <= recovery"
+                            f" (legacy tolerance)"
+                        )
                     else:
-                        # Fallback: calculate from flow rate
-                        feed_flow_m3h = config_data.get('feed_flow_m3h', 100)
-                        feed_h2o = feed_flow_m3h / 3.6  # kg/s
-                    system_recovery = total_permeate / feed_h2o if feed_h2o > 0 else 0
+                        logger.info(
+                            f"Stage {i}: Progressive tightening enabled; recovery bounds handled via staged constraints"
+                        )
 
-                logger.info(f"\nSystem Recovery: {system_recovery*100:.1f}% (target: {config_data['target_recovery']*100:.1f}%)")
-                recovery_error = (system_recovery - config_data['target_recovery']) * 100
-                logger.info(f"Recovery Error: {recovery_error:+.1f}%")
+            # Add system-level recovery constraint for recycle systems
+            if has_recycle and not use_staged_solve:
+                logger.info("\n=== Adding System-Level Recovery Constraint for Recycle ===")
+                recovery_tolerance = 0.005  # Allow 0.5% tolerance (tighter)
 
-                initial_solve_success = True
+                # Get the SYSTEM target recovery from config, not stage recovery
+                system_target_recovery = config_data.get('target_recovery', 0.70)
 
+                # Fresh feed water flow (inlet to system)
+                fresh_h2o = m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O']
+
+                # Disposal water flow (leaving system)
+                disposal_h2o = m.fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O']
+
+                # System recovery = (fresh_feed - disposal) / fresh_feed
+                # This is equivalent to permeate / fresh_feed
+                # One-sided constraint to avoid over-constraining
+                system_tolerance = 0.01  # 1% tolerance for system recovery
+                m.fs.system_recovery_constraint = Constraint(
+                    expr=(fresh_h2o - disposal_h2o) / fresh_h2o >= system_target_recovery - system_tolerance
+                )
+                logger.info(
+                    f"Added system recovery constraint: recovery >= {system_target_recovery - system_tolerance:.3f} (one-sided)"
+                )
+                logger.info(
+                    f"Target SYSTEM recovery: {system_target_recovery:.3f} (from config, not stage recovery)"
+                )
+            elif has_recycle:
+                logger.info(
+                    "\n=== Progressive tightening enabled; system recovery bounds will be handled with staged constraints ==="
+                )
+
+            if use_staged_solve:
+                stage_data_list = config_data.get('stages', [])
+                if len(stage_data_list) < n_stages:
+                    stage_data_list = stage_data_list + [{}] * (n_stages - len(stage_data_list))
+
+                if not hasattr(m.fs, 'stage_index'):
+                    m.fs.stage_index = RangeSet(1, n_stages)
+
+                # Stage target recoveries default to stage_recovery then target_recovery
+                stage_targets = {
+                    i: stage_data_list[i-1].get(
+                        'target_recovery',
+                        stage_data_list[i-1].get('stage_recovery', 0.5),
+                    )
+                    for i in range(1, n_stages + 1)
+                }
+
+                if hasattr(m.fs, 'stage_recovery_target'):
+                    m.fs.del_component(m.fs.stage_recovery_target)
+                m.fs.stage_recovery_target = Param(
+                    m.fs.stage_index,
+                    initialize=stage_targets,
+                )
+
+                initial_tol = progressive_tolerances[0]
+                tolerance_init = {i: initial_tol for i in range(1, n_stages + 1)}
+
+                if hasattr(m.fs, 'recovery_tolerance'):
+                    m.fs.del_component(m.fs.recovery_tolerance)
+                m.fs.recovery_tolerance = Param(
+                    m.fs.stage_index,
+                    mutable=True,
+                    initialize=tolerance_init,
+                )
+
+                if hasattr(m.fs, 'stage_recovery_slack_pos'):
+                    m.fs.del_component(m.fs.stage_recovery_slack_pos)
+                if hasattr(m.fs, 'stage_recovery_slack_neg'):
+                    m.fs.del_component(m.fs.stage_recovery_slack_neg)
+                m.fs.stage_recovery_slack_pos = Var(
+                    m.fs.stage_index,
+                    domain=NonNegativeReals,
+                    initialize=0.0,
+                )
+                m.fs.stage_recovery_slack_neg = Var(
+                    m.fs.stage_index,
+                    domain=NonNegativeReals,
+                    initialize=0.0,
+                )
+
+                def _stage_upper_rule(fs, i):
+                    ro_blk = getattr(fs, f"ro_stage{i}")
+                    return (
+                        ro_blk.recovery_mass_phase_comp[0, 'Liq', 'H2O']
+                        <= fs.stage_recovery_target[i]
+                        + fs.recovery_tolerance[i]
+                        + fs.stage_recovery_slack_pos[i]
+                    )
+
+                def _stage_lower_rule(fs, i):
+                    ro_blk = getattr(fs, f"ro_stage{i}")
+                    return (
+                        ro_blk.recovery_mass_phase_comp[0, 'Liq', 'H2O']
+                        >= fs.stage_recovery_target[i]
+                        - fs.recovery_tolerance[i]
+                        - fs.stage_recovery_slack_neg[i]
+                    )
+
+                if hasattr(m.fs, 'stage_recovery_upper'):
+                    m.fs.del_component(m.fs.stage_recovery_upper)
+                if hasattr(m.fs, 'stage_recovery_lower'):
+                    m.fs.del_component(m.fs.stage_recovery_lower)
+                m.fs.stage_recovery_upper = Constraint(
+                    m.fs.stage_index,
+                    rule=_stage_upper_rule,
+                )
+                m.fs.stage_recovery_lower = Constraint(
+                    m.fs.stage_index,
+                    rule=_stage_lower_rule,
+                )
+
+                # System-level recovery bounds when recycle is present
+                if has_recycle:
+                    system_target = config_data.get('target_recovery', 0.70)
+                    if hasattr(m.fs, 'system_recovery_target'):
+                        m.fs.del_component(m.fs.system_recovery_target)
+                    m.fs.system_recovery_target = Param(initialize=system_target)
+
+                    if hasattr(m.fs, 'system_recovery_tolerance'):
+                        m.fs.del_component(m.fs.system_recovery_tolerance)
+                    m.fs.system_recovery_tolerance = Param(
+                        mutable=True,
+                        initialize=initial_tol,
+                    )
+
+                    if hasattr(m.fs, 'system_recovery_slack_pos'):
+                        m.fs.del_component(m.fs.system_recovery_slack_pos)
+                    if hasattr(m.fs, 'system_recovery_slack_neg'):
+                        m.fs.del_component(m.fs.system_recovery_slack_neg)
+
+                    m.fs.system_recovery_slack_pos = Var(
+                        domain=NonNegativeReals,
+                        initialize=0.0,
+                    )
+                    m.fs.system_recovery_slack_neg = Var(
+                        domain=NonNegativeReals,
+                        initialize=0.0,
+                    )
+
+                    def _system_upper_rule(fs):
+                        fresh_h2o = fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O']
+                        disposal_h2o = fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O']
+                        return (
+                            (fresh_h2o - disposal_h2o) / fresh_h2o
+                            <= fs.system_recovery_target
+                            + fs.system_recovery_tolerance
+                            + fs.system_recovery_slack_pos
+                        )
+
+                    def _system_lower_rule(fs):
+                        fresh_h2o = fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O']
+                        disposal_h2o = fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O']
+                        return (
+                            (fresh_h2o - disposal_h2o) / fresh_h2o
+                            >= fs.system_recovery_target
+                            - fs.system_recovery_tolerance
+                            - fs.system_recovery_slack_neg
+                        )
+
+                    if hasattr(m.fs, 'system_recovery_upper'):
+                        m.fs.del_component(m.fs.system_recovery_upper)
+                    if hasattr(m.fs, 'system_recovery_lower'):
+                        m.fs.del_component(m.fs.system_recovery_lower)
+                    m.fs.system_recovery_upper = Constraint(rule=_system_upper_rule)
+                    m.fs.system_recovery_lower = Constraint(rule=_system_lower_rule)
+
+                slack_penalty_weight = config_data.get('recovery_slack_penalty', 1e6)
+                penalty_expr = sum(
+                    slack_penalty_weight
+                    * (m.fs.stage_recovery_slack_pos[i] ** 2 + m.fs.stage_recovery_slack_neg[i] ** 2)
+                    for i in m.fs.stage_index
+                )
+                if has_recycle:
+                    penalty_expr += slack_penalty_weight * (
+                        m.fs.system_recovery_slack_pos ** 2 + m.fs.system_recovery_slack_neg ** 2
+                    )
+                m.fs.slack_penalty_expr = penalty_expr
+
+                logger.info(
+                    "Initialized staged recovery bounds with initial tolerance "
+                    f"±{initial_tol * 100:.1f}% and slack penalty weight {slack_penalty_weight:.1e}"
+                )
+
+            # Check degrees of freedom
+            dof = degrees_of_freedom(m)
+            logger.info(f"\nDegrees of freedom after adding constraints: {dof}")
+
+            def _build_deviation_objective(include_slack=True):
+                stage_config_list = config_data.get('stages', [])
+                if len(stage_config_list) < n_stages:
+                    stage_config_list = stage_config_list + [{}] * (n_stages - len(stage_config_list))
+
+                objective_expr = 0
+
+                for i in range(1, n_stages + 1):
+                    ro_blk = getattr(m.fs, f"ro_stage{i}")
+                    stage_cfg = stage_config_list[i - 1]
+                    design_flux_lmh = stage_cfg.get('design_flux_lmh', 18)
+                    design_flux_kg = design_flux_lmh / 3.6e6 if design_flux_lmh else 1.0
+                    avg_flux = ro_blk.flux_mass_phase_comp_avg[0, 'Liq', 'H2O']
+                    objective_expr += 3 * ((avg_flux - design_flux_kg) / design_flux_kg) ** 2
+
+                for i in range(1, n_stages + 1):
+                    pump_blk = getattr(m.fs, f"pump{i}")
+                    stage_cfg = stage_config_list[i - 1]
+                    design_pressure_pa = stage_cfg.get('feed_pressure_bar', 10) * 1e5
+                    objective_expr += ((pump_blk.outlet.pressure[0] - design_pressure_pa) / design_pressure_pa) ** 2
+
+                if include_slack and hasattr(m.fs, 'slack_penalty_expr'):
+                    objective_expr += m.fs.slack_penalty_expr
+                    logger.info("Combined deviation objective with slack penalty")
+
+                if hasattr(m.fs, 'minimize_deviations'):
+                    m.fs.del_component(m.fs.minimize_deviations)
+
+                m.fs.minimize_deviations = Objective(expr=objective_expr, sense=minimize)
+                logger.info(
+                    "Added multi-objective: 3×flux_deviation + 1×pressure_deviation"
+                    + (" + slack_penalty" if include_slack and hasattr(m.fs, 'slack_penalty_expr') else "")
+                )
+
+            # Staged solving: First try without objective for feasibility
+            phase = 1 if use_staged_solve else 2
+            add_objective = not use_staged_solve  # Skip objective in Phase 1
+
+            if dof > 0 and add_objective:
+                _build_deviation_objective(include_slack=True)
+                logger.info("This will prioritize flux matching while keeping pressures reasonable and minimizing slack")
+                dof = degrees_of_freedom(m)
+                logger.info(f"Degrees of freedom after adding objective: {dof} (should be 0 for optimization)")
+            elif dof > 0 and not add_objective:
+                logger.info(f"Phase 1: Skipping objective for initial feasibility solve (DOF = {dof})")
+                logger.info("Will add objective in Phase 2 if initial solve succeeds")
+            elif dof == 0:
+                logger.info("System is fully constrained (DOF = 0)")
+                logger.info("Optimization will be limited - consider unfixing some variables if needed")
+            elif dof < 0:
+                logger.error(f"System is over-constrained! DOF = {dof}")
+                logger.error("This typically means conflicting constraints between:")
+                logger.error("  - Recovery constraints (stage and system)")
+                logger.error("  - Flux bounds")
+                logger.error("  - Pressure bounds")
+                logger.error("Consider relaxing recovery tolerance or widening flux bounds")
+        
+        # Solve the model
+        logger.info("\n=== Solving Model ===")
+        # Get solver (no parameters to get_solver)
+        solver = get_solver()
+        
+        if has_recycle and optimize_pumps:
+            # Use successive substitution for recycle with pump optimization
+            logger.info("Using successive substitution for recycle convergence")
+            
+            max_iter = 20
+            tol = 1e-5
+            
+            for iteration in range(max_iter):
+                # Store previous mixed flow
+                prev_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
+                
+                # Solve model with symbolic labels for debugging
+                try:
+                    results = solver.solve(m, tee=False, symbolic_solver_labels=True, options={
+                        'linear_solver': 'ma27',
+                        'max_cpu_time': 600,  # 10 minutes for main solve
+                        'tol': 1e-6,  # Moderately relaxed for balance of speed/accuracy
+                        'constr_viol_tol': 1e-6,
+                        'acceptable_tol': 1e-3,  # Fallback for difficult problems
+                        'acceptable_constr_viol_tol': 1e-3,
+                        'print_level': 0,  # Suppress all IPOPT output
+                        'halt_on_ampl_error': 'yes'  # Stop immediately on AMPL error
+                    })
+                except Exception as e:
+                    logger.error(f"\n=== AMPL ERROR DIAGNOSTICS (Iteration {iteration+1}) ===")
+                    logger.error(f"Error message: {str(e)}")
+
+                    # Try to extract problematic values
+                    for i in range(1, n_stages + 1):
+                        try:
+                            ro = getattr(m.fs, f"ro_stage{i}")
+                            pump = getattr(m.fs, f"pump{i}")
+
+                            # Check pressures
+                            feed_p = value(ro.inlet.pressure[0])/1e5
+                            logger.error(f"Stage {i} feed pressure: {feed_p:.2f} bar")
+
+                            # Check for negative driving pressure
+                            osm_in = value(ro.feed_side.properties[0, 0].pressure_osm_phase['Liq'])/1e5
+                            ndp = feed_p - osm_in
+                            logger.error(f"Stage {i} NDP = {ndp:.2f} bar (feed: {feed_p:.2f}, osmotic: {osm_in:.2f})")
+
+                            if ndp < 0:
+                                logger.error(f"Stage {i} ERROR: NEGATIVE DRIVING PRESSURE!")
+                        except Exception as diag_e:
+                            logger.error(f"Stage {i} diagnostic failed: {str(diag_e)}")
+
+                    # DIAGNOSTIC: Check pump actual values
+                    logger.info("\n=== PUMP DIAGNOSTIC AFTER SOLVE ===")
+                    for i in range(1, n_stages + 1):
+                        try:
+                            pump = getattr(m.fs, f"pump{i}")
+                            logger.info(f"\nPump {i}:")
+                            logger.info(f"  Inlet pressure: {value(pump.inlet.pressure[0])/1e5:.2f} bar ({value(pump.inlet.pressure[0]):.0f} Pa)")
+                            logger.info(f"  Outlet pressure: {value(pump.outlet.pressure[0])/1e5:.2f} bar ({value(pump.outlet.pressure[0]):.0f} Pa)")
+                            if hasattr(pump, 'deltaP'):
+                                logger.info(f"  DeltaP: {value(pump.deltaP[0])/1e5:.2f} bar")
+                            logger.info(f"  Inlet flow: {value(pump.control_volume.properties_in[0].flow_vol)*3600:.2f} m³/h")
+                            logger.info(f"  Work mechanical: {value(pump.work_mechanical[0])/1000:.2f} kW")
+                            if hasattr(pump, 'work_fluid'):
+                                logger.info(f"  Work fluid: {value(pump.work_fluid[0])/1000:.2f} kW")
+                            logger.info(f"  Efficiency: {value(pump.efficiency_pump[0]):.3f}")
+                        except Exception as pump_diag_e:
+                            logger.error(f"Pump {i} diagnostic failed: {str(pump_diag_e)}")
+
+                    # Check mixer state if recycle
+                    if has_recycle:
+                        try:
+                            mixer = m.fs.feed_mixer
+                            fresh_tds = value(mixer.fresh.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                            recycle_tds = value(mixer.recycle.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                            mixed_tds = value(mixer.outlet.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                            logger.error(f"Mixer TDS: fresh={fresh_tds:.1f}, recycle={recycle_tds:.1f}, mixed={mixed_tds:.1f} kg/m³")
+                        except Exception as mix_e:
+                            logger.error(f"Mixer diagnostic failed: {str(mix_e)}")
+
+                    raise  # Re-raise the original exception
+
+                # Check solver status with diagnostic info
+                check_solver_status(results, context=f"Recycle iteration {iteration+1}",
+                                  raise_on_fail=True, m=m, n_stages=n_stages)
+                
+                # Check convergence
+                curr_flow = value(m.fs.feed_mixer.mixed_state[0].flow_mass_phase_comp['Liq', 'H2O'])
+                rel_change = abs(curr_flow - prev_flow) / prev_flow if prev_flow > 0 else 1
+                
+                logger.info(f"Iteration {iteration+1}: Mixed flow = {curr_flow:.4f} kg/s, relative change = {rel_change:.2e}")
+                
+                if rel_change < tol:
+                    logger.info(f"Converged after {iteration+1} iterations")
+                    break
+            else:
+                logger.warning(f"Did not converge after {max_iter} iterations")
+        else:
+            # Single solve for non-recycle or fixed pump cases with symbolic labels
+            try:
+                results = solver.solve(m, tee=False, symbolic_solver_labels=True, options={
+                    'linear_solver': 'ma27',
+                    'max_cpu_time': 600,  # 10 minutes for main solve
+                    'tol': 1e-6,  # Moderately relaxed for balance of speed/accuracy
+                    'constr_viol_tol': 1e-6,
+                    'acceptable_tol': 1e-3,  # Fallback for difficult problems
+                    'acceptable_constr_viol_tol': 1e-3,
+                    'print_level': 0,  # Suppress all IPOPT output
+                    'halt_on_ampl_error': 'yes'  # Stop immediately on AMPL error
+                })
             except Exception as e:
-                logger.error(f"Error in pressure-fixing approach: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-                initial_solve_success = False
+                logger.error(f"\n=== AMPL ERROR DIAGNOSTICS ===")
+                logger.error(f"Error message: {str(e)}")
+
+                # Try to extract problematic values
+                for i in range(1, n_stages + 1):
+                    try:
+                        ro = getattr(m.fs, f"ro_stage{i}")
+                        pump = getattr(m.fs, f"pump{i}")
+
+                        # Check pressures
+                        feed_p = value(ro.inlet.pressure[0])/1e5
+                        logger.error(f"Stage {i} feed pressure: {feed_p:.2f} bar")
+
+                        # Check for negative driving pressure
+                        osm_in = value(ro.feed_side.properties[0, 0].pressure_osm_phase['Liq'])/1e5
+                        ndp = feed_p - osm_in
+                        logger.error(f"Stage {i} NDP = {ndp:.2f} bar (feed: {feed_p:.2f}, osmotic: {osm_in:.2f})")
+
+                        if ndp < 0:
+                            logger.error(f"Stage {i} ERROR: NEGATIVE DRIVING PRESSURE!")
+                    except Exception as diag_e:
+                        logger.error(f"Stage {i} diagnostic failed: {str(diag_e)}")
+
+                # Check mixer state if recycle
+                if has_recycle:
+                    try:
+                        mixer = m.fs.feed_mixer
+                        fresh_tds = value(mixer.fresh.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                        recycle_tds = value(mixer.recycle.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                        mixed_tds = value(mixer.outlet.conc_mass_phase_comp[0, 'Liq', 'tds'])
+                        logger.error(f"Mixer TDS: fresh={fresh_tds:.1f}, recycle={recycle_tds:.1f}, mixed={mixed_tds:.1f} kg/m³")
+                    except Exception as mix_e:
+                        logger.error(f"Mixer diagnostic failed: {str(mix_e)}")
+
+                raise  # Re-raise the original exception
+
+            # Check solver status with diagnostic info
+            # Phase 1 is a pure feasibility problem, so accept feasible solutions
+            initial_solve_success = check_solver_status(results, context="Main solve (Phase 1)", raise_on_fail=False,
+                              m=m, n_stages=n_stages, allow_feasible=True)
+
+        # Phase 2: Progressive constraint tightening with DOF-aware objective management
+        logger.info(f"\nPhase 2 conditions - initial_solve_success: {initial_solve_success}, use_staged_solve: {use_staged_solve}")
+
+        # Explicitly log if Phase 2 is being skipped
+        if not initial_solve_success:
+            logger.warning("Phase 2 skipped: initial_solve_success is False")
+        if not use_staged_solve:
+            logger.warning("Phase 2 skipped: use_staged_solve is False")
+
+        if initial_solve_success and use_staged_solve:
+            logger.info("\n=== Phase 2: Progressive Constraint Tightening ===")
+
+            # Try-except to catch any errors in Phase 2
+            try:
+                _build_deviation_objective(include_slack=True)
+
+                def _stage_recovery_violation():
+                    worst = 0.0
+                    for idx in m.fs.stage_index:
+                        ro_blk = getattr(m.fs, f"ro_stage{idx}")
+                        actual = value(ro_blk.recovery_mass_phase_comp[0, 'Liq', 'H2O'])
+                        target = value(m.fs.stage_recovery_target[idx])
+                        tol = value(m.fs.recovery_tolerance[idx])
+                        above = max(0.0, actual - (target + tol))
+                        below = max(0.0, (target - tol) - actual)
+                        worst = max(worst, above, below)
+                    return worst
+
+                def _system_recovery_violation():
+                    if not has_recycle:
+                        return 0.0
+                    feed_h2o = value(m.fs.fresh_feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
+                    if feed_h2o <= 0:
+                        return 0.0
+                    disposal_h2o = value(m.fs.disposal_product.inlet.flow_mass_phase_comp[0, 'Liq', 'H2O'])
+                    actual = (feed_h2o - disposal_h2o) / feed_h2o
+                    target = value(m.fs.system_recovery_target)
+                    tol = value(m.fs.system_recovery_tolerance)
+                    above = max(0.0, actual - (target + tol))
+                    below = max(0.0, (target - tol) - actual)
+                    return max(above, below)
+
+                try:
+                    calculate_scaling_factors(m)
+                    logger.info("Applied scaling factors prior to tightening loop")
+                except Exception as scale_error:
+                    logger.debug(f"Scaling warning before Phase 2: {scale_error}")
+
+                stage_violation = _stage_recovery_violation()
+                system_violation = _system_recovery_violation()
+                current_violation = max(stage_violation, system_violation)
+
+                logger.info(
+                    f"Phase 2 starting point: stage deviation={stage_violation*100:.2f}%, system deviation={system_violation*100:.2f}%"
+                )
+                logger.info(f"Target final tolerance: ±{final_recovery_tolerance*100:.1f}%")
+
+                achieved_tolerance = None
+                if current_violation <= final_recovery_tolerance + 1e-4:
+                    logger.info("Phase 1 solution already within final tolerance; skipping tightening loop")
+                    achieved_tolerance = final_recovery_tolerance
+                else:
+                    tolerance_sequence = progressive_tolerances[1:] if len(progressive_tolerances) > 1 else []
+
+                    for step_idx, tol in enumerate(tolerance_sequence, start=1):
+                        logger.info(f"\n--- Stage 2 step {step_idx}: tightening to ±{tol*100:.1f}% ---")
+
+                        for idx in m.fs.stage_index:
+                            m.fs.recovery_tolerance[idx].value = tol
+                            m.fs.stage_recovery_slack_pos[idx].setlb(0.0)
+                            m.fs.stage_recovery_slack_neg[idx].setlb(0.0)
+                            m.fs.stage_recovery_slack_pos[idx].value = 0.0
+                            m.fs.stage_recovery_slack_neg[idx].value = 0.0
+
+                        if has_recycle:
+                            m.fs.system_recovery_tolerance.value = tol
+                            m.fs.system_recovery_slack_pos.setlb(0.0)
+                            m.fs.system_recovery_slack_neg.setlb(0.0)
+                            m.fs.system_recovery_slack_pos.value = 0.0
+                            m.fs.system_recovery_slack_neg.value = 0.0
+
+                        try:
+                            calculate_scaling_factors(m)
+                        except Exception as scale_error:
+                            logger.debug(f"Scaling warning at tolerance {tol:.3f}: {scale_error}")
+
+                        solver_options = {
+                            'linear_solver': 'ma27',
+                            'max_iter': 400 + 120 * step_idx,
+                            'tol': max(1e-8, tol * 1e-2),
+                            'constr_viol_tol': max(1e-8, tol * 1e-2),
+                            'acceptable_tol': 1e-6,
+                            'warm_start_init_point': 'yes',
+                            'warm_start_bound_push': 1e-8,
+                            'warm_start_slack_bound_push': 1e-8,
+                            'mu_strategy': 'monotone',
+                            'print_level': 0,
+                        }
+
+                        if current_violation <= tol + 5e-4:
+                            logger.info(
+                                f"  Current deviation {current_violation*100:.2f}% already within ±{tol*100:.1f}%; skipping solve"
+                            )
+                            achieved_tolerance = tol
+                            continue
+
+                        results = solver.solve(m, tee=False, options=solver_options)
+                        status = str(results.solver.status)
+                        term = str(results.solver.termination_condition)
+                        logger.info(f"  Solve status={status}, termination={term}")
+
+                        if check_solver_status(
+                            results,
+                            context=f"Stage 2 tighten to ±{tol*100:.1f}%",
+                            raise_on_fail=False,
+                            allow_feasible=True,
+                        ):
+                            stage_slack_pos = max(value(m.fs.stage_recovery_slack_pos[idx]) for idx in m.fs.stage_index)
+                            stage_slack_neg = max(value(m.fs.stage_recovery_slack_neg[idx]) for idx in m.fs.stage_index)
+                            max_slack = max(stage_slack_pos, stage_slack_neg)
+                            if has_recycle:
+                                max_slack = max(
+                                    max_slack,
+                                    value(m.fs.system_recovery_slack_pos),
+                                    value(m.fs.system_recovery_slack_neg),
+                                )
+                            if max_slack > 5e-4:
+                                logger.warning(f"  Slack magnitude {max_slack:.4e} remains; consider increasing penalty if persistent")
+
+                            stage_violation = _stage_recovery_violation()
+                            system_violation = _system_recovery_violation()
+                            current_violation = max(stage_violation, system_violation)
+
+                            logger.info(
+                                f"  Post-solve deviation: stage={stage_violation*100:.2f}%, system={system_violation*100:.2f}%"
+                            )
+
+                            if current_violation <= tol + 5e-4:
+                                achieved_tolerance = tol
+                            else:
+                                logger.warning(
+                                    f"  Remaining deviation {current_violation*100:.2f}% exceeds ±{tol*100:.1f}%"
+                                )
+                        else:
+                            stage_violation = _stage_recovery_violation()
+                            system_violation = _system_recovery_violation()
+                            current_violation = max(stage_violation, system_violation)
+                            logger.warning(
+                                f"  Solver did not converge cleanly; violation now {current_violation*100:.2f}%"
+                            )
+
+                    stage_violation = _stage_recovery_violation()
+                    system_violation = _system_recovery_violation()
+                    final_violation = max(stage_violation, system_violation)
+
+                    if final_violation <= final_recovery_tolerance + 5e-4:
+                        achieved_tolerance = final_recovery_tolerance
+
+                if achieved_tolerance is not None:
+                    logger.info(
+                        f"\n=== Phase 2 Complete: Achieved ±{achieved_tolerance*100:.1f}% tolerance (final deviation {max(stage_violation, system_violation)*100:.2f}%) ==="
+                    )
+                else:
+                    logger.warning(
+                        f"Phase 2 ended with deviation {max(stage_violation, system_violation)*100:.2f}% (> ±{final_recovery_tolerance*100:.1f}%)"
+                    )
+
+                logger.info("Final slack variable values:")
+                for idx in m.fs.stage_index:
+                    pos_val = value(m.fs.stage_recovery_slack_pos[idx])
+                    neg_val = value(m.fs.stage_recovery_slack_neg[idx])
+                    if max(pos_val, neg_val) > 1e-8:
+                        logger.info(
+                            f"  Stage {idx}: slack_pos={pos_val:.6f}, slack_neg={neg_val:.6f}"
+                        )
+
+                if has_recycle:
+                    pos_val = value(m.fs.system_recovery_slack_pos)
+                    neg_val = value(m.fs.system_recovery_slack_neg)
+                    if max(pos_val, neg_val) > 1e-8:
+                        logger.info(
+                            f"  System: slack_pos={pos_val:.6f}, slack_neg={neg_val:.6f}"
+                        )
+
+                total_permeate = sum(
+                    value(getattr(m.fs, f"ro_stage{idx}").mixed_permeate[0].flow_mass_phase_comp['Liq', 'H2O'])
+                    for idx in range(1, n_stages + 1)
+                )
+                feed_h2o = value(m.fs.feed.properties[0].flow_mass_phase_comp['Liq', 'H2O'])
+                final_recovery = total_permeate / feed_h2o if feed_h2o > 0 else 0.0
+                logger.info(
+                    f"Final system recovery: {final_recovery*100:.2f}% (target: {config_data['target_recovery']*100:.1f}%)"
+                )
+
+            except Exception as phase2_error:
+                logger.error(f"Phase 2 error: {str(phase2_error)}")
+                logger.warning("Phase 2 failed, continuing with Phase 1 solution")
+
         elif not initial_solve_success:
             # Phase 3: Fallback with progressive relaxation
             logger.warning("\n=== Phase 3: Attempting Fallback with Relaxed Constraints ===")

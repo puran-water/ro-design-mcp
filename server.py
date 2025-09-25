@@ -109,7 +109,13 @@ def _run_simulation_in_subprocess(sim_input: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         if proc.returncode != 0:
-            logger.error(f"Child simulation process failed (code {proc.returncode}). Stderr: {proc.stderr[:2000]}")
+            logger.error(f"Child simulation process failed (code {proc.returncode})")
+            # Log stderr in chunks for debugging AMPL errors
+            if proc.stderr:
+                stderr_lines = proc.stderr.split('\n')
+                for line in stderr_lines:
+                    if 'ERROR' in line or 'AMPL' in line or 'Stage' in line or 'NDP' in line or 'diagnostic' in line:
+                        logger.error(f"STDERR: {line}")
             try:
                 return json.loads(proc.stdout) if proc.stdout else {
                     "status": "error",
@@ -123,6 +129,11 @@ def _run_simulation_in_subprocess(sim_input: Dict[str, Any]) -> Dict[str, Any]:
                     "stderr": proc.stderr,
                     "raw_stdout": proc.stdout,
                 }
+
+        # Temporary logging for pressure-fixing debugging
+        if proc.stderr and "PRESSURE FIXING" in proc.stderr:
+            first_idx = proc.stderr.index("PRESSURE FIXING")
+            logger.info(f"Pressure-fixing executed: {proc.stderr[first_idx:min(first_idx+200, len(proc.stderr))]}...")
 
         # Parse JSON from child's stdout
         try:
