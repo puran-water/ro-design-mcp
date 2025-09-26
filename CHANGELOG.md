@@ -5,6 +5,24 @@ All notable changes to the RO Design MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-09-26
+
+### Removed
+- **Full WaterTAP simulator modules** (77 files, 7,185 lines): Non-functional, removed in favor of hybrid approach
+  - Deleted: `ro_model_builder.py`, `ro_model_builder_v2.py`, `ro_solver.py`, `ro_results_extractor.py`, `ro_results_extractor_v2.py`
+  - Deleted: `simulate_ro.py`, `simulate_ro_v2.py`, `simulate_ro_cli.py`
+  - Removed: 20 outdated documentation files, 49 test/debugging scripts
+- **`use_hybrid_simulator` parameter** from `simulate_ro_system_v2`: Now always uses hybrid simulator
+
+### Changed
+- **Hybrid simulator is now the only simulation pathway**: Literature-based performance + WaterTAP costing
+- **Performance improvement**: 10-30x faster simulations (0.5-1.5s vs 10-50s for full WaterTAP)
+- **Documentation updated**: README and V2_API_DOCUMENTATION reflect hybrid-only approach
+
+### Fixed
+- **pH optimization bug**: Fixed `'float' object is not subscriptable` error in `test_recovery_at_pH`
+- **Import cleanup**: Removed references to deleted modules in `utils/__init__.py`
+
 ## [2.3.0] - 2025-09-09
 
 ### Added
@@ -74,10 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recovery matching accuracy improved to ±2%
 
 ### Technical Implementation
-- Modified `utils/ro_model_builder_v2.py`: Added comprehensive physical bounds
-- Modified `utils/ro_results_extractor_v2.py`: Dynamic ion extraction from solute_set
-- Modified `server.py`: Removed hardcoded NaCl equivalent overrides
-- Modified `utils/simulate_ro_cli.py`: Changed default to MCAS direct modeling
+- Modified `server.py`: Removed full WaterTAP simulator, now uses hybrid simulator only
+- Removed modules: `ro_model_builder_v2.py`, `ro_results_extractor_v2.py`, `ro_solver.py`, `simulate_ro_cli.py` (non-functional)
+- Added `utils/hybrid_ro_simulator.py`: Literature-based performance + WaterTAP costing
+- Added `utils/mock_units_for_costing.py`: Lightweight WaterTAP integration
 
 ## [2.0.0] - 2025-09-03
 

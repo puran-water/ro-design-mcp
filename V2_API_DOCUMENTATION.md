@@ -2,7 +2,7 @@
 
 ## Overview
 
-The V2 API represents a significant enhancement to the RO Design MCP Server, transforming it into a showcase implementation for WaterTAP-based process unit servers. This version implements comprehensive economic modeling with full transparency, detailed chemical consumption tracking, and support for plant-wide optimization.
+The V2 API uses a **hybrid simulator approach**: literature-based RO performance calculations integrated with WaterTAP's economic costing framework. This provides robust, fast simulations with accurate economic analysis, avoiding the convergence issues of full thermodynamic flowsheet modeling.
 
 ## Key Enhancements in V2
 
@@ -45,7 +45,7 @@ Enhanced simulation with detailed economic modeling.
 | `feed_salinity_ppm` | float | Yes | Feed water salinity in ppm |
 | `feed_ion_composition` | str (JSON) | Yes | Ion concentrations in mg/L |
 | `feed_temperature_c` | float | No | Feed temperature (default: 25°C) |
-| `membrane_type` | str | No | "brackish" or "seawater" (default: "brackish") |
+| `membrane_model` | str | Yes | Specific membrane model (e.g., "BW30_PRO_400", "SW30HRLE_440") |
 | `economic_params` | Dict | No | Economic parameters (uses WaterTAP defaults if not provided) |
 | `chemical_dosing` | Dict | No | Chemical dosing parameters (uses defaults if not provided) |
 | `optimization_mode` | bool | No | If True, returns model handle instead of results |
@@ -150,34 +150,9 @@ Enhanced simulation with detailed economic modeling.
 }
 ```
 
-#### Response Structure (Optimization Mode)
+#### Note on Optimization Mode
 
-```python
-{
-    "status": "success",
-    "api_version": "v2",
-    "model_handle": "uuid-string",
-    "metadata": {
-        "inputs": {
-            "feed_flow": {"pyomo_path": "fs.feed.outlet.flow_mass[0]", ...},
-            "feed_pressure": {"pyomo_path": "fs.pump1.outlet.pressure[0]", ...}
-        },
-        "decision_vars": {
-            "stage1_area": {"pyomo_path": "fs.ro_stage1.area", ...},
-            "pump1_pressure": {"pyomo_path": "fs.pump1.outlet.pressure[0]", ...}
-        },
-        "outputs": {
-            "lcow": {"pyomo_path": "fs.costing.LCOW", "units": "$/m3"},
-            "specific_energy": {"pyomo_path": "fs.costing.specific_energy_consumption", ...}
-        },
-        "ports": {
-            "feed_inlet": "fs.feed.inlet",
-            "permeate_outlet": "fs.product.inlet",
-            "brine_outlet": "fs.disposal.inlet"
-        }
-    }
-}
-```
+Optimization mode is **not supported** via the MCP server due to subprocess isolation (model handles cannot persist across process boundaries). For plant-wide optimization, use the Python API directly via `utils.hybrid_ro_simulator.simulate_ro_hybrid`.
 
 ### `get_ro_defaults`
 
@@ -185,9 +160,7 @@ Returns default economic and chemical dosing parameters aligned with WaterTAP st
 
 #### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `membrane_type` | str | No | "brackish" or "seawater" (default: "brackish") |
+This tool takes **no parameters** - it returns all defaults for both brackish and seawater applications.
 
 #### Response
 
@@ -207,16 +180,16 @@ Returns default economic and chemical dosing parameters aligned with WaterTAP st
 config = await optimize_ro_configuration(
     feed_flow_m3h=100,
     water_recovery_fraction=0.75,
-    membrane_type="brackish"
+    membrane_model="BW30_PRO_400"
 )
 
 # Run v2 simulation with defaults
 result = await simulate_ro_system_v2(
     configuration=config["configurations"][0],
     feed_salinity_ppm=4000,
-    feed_ion_composition='{"Na_+": 1200, "Cl_-": 2100, "Ca_2+": 120}',
-    feed_temperature_c=25.0,
-    membrane_type="brackish"
+    membrane_model="BW30_PRO_400",
+    feed_ion_composition='{"Na+": 1200, "Cl-": 2100, "Ca2+": 120}',
+    feed_temperature_c=25.0
 )
 
 print(f"LCOW: ${result['economics']['lcow_usd_m3']:.3f}/m³")
@@ -226,11 +199,9 @@ print(f"LCOW: ${result['economics']['lcow_usd_m3']:.3f}/m³")
 
 ```python
 # Get defaults and customize
-defaults = await get_ro_defaults(membrane_type="seawater")
+defaults = await get_ro_defaults()
 economic_params = defaults["economic_params"]
 economic_params["electricity_cost_usd_kwh"] = 0.10
-economic_params["include_cartridge_filters"] = True
-economic_params["include_cip_system"] = True
 
 chemical_dosing = defaults["chemical_dosing"]
 chemical_dosing["antiscalant_dose_mg_L"] = 5.0
@@ -239,26 +210,31 @@ chemical_dosing["antiscalant_dose_mg_L"] = 5.0
 result = await simulate_ro_system_v2(
     configuration=config,
     feed_salinity_ppm=35000,
+    membrane_model="SW30HRLE_440",
     feed_ion_composition=seawater_composition,
     economic_params=economic_params,
     chemical_dosing=chemical_dosing
 )
 ```
 
-### Example 3: Optimization Mode for Plant-Wide Integration
+### Example 3: Sustainable Recovery Check
 
 ```python
-# Build model for optimization
-result = await simulate_ro_system_v2(
-    configuration=config,
-    feed_salinity_ppm=5000,
-    feed_ion_composition=ion_comp,
-    economic_params=economic_params,
-    optimization_mode=True  # Returns model handle
+# Check sustainable recovery limits
+config = await optimize_ro_configuration(
+    feed_flow_m3h=100,
+    water_recovery_fraction=0.85,
+    membrane_model="BW30_PRO_400",
+    feed_ion_composition='{"Na+": 1152, "Ca2+": 61, "Mg2+": 18, "Cl-": 1730, "SO42-": 86, "HCO3-": 201}',
+    feed_temperature_c=25.0,
+    feed_ph=7.5
 )
 
-model_handle = result["model_handle"]
-# Use handle for plant-wide optimization across multiple MCP servers
+# Check if target is sustainable
+if not config["sustainable_recovery"]["comparison_to_target"]["is_sustainable"]:
+    print(f"Warning: Target recovery exceeds sustainable limit")
+    print(f"Max sustainable: {config['sustainable_recovery']['max_recovery_percent']:.1f}%")
+    print(f"Limiting minerals: {config['sustainable_recovery']['limiting_minerals']}")
 ```
 
 ## Migration from V1
@@ -271,24 +247,29 @@ The V2 API is accessed through new endpoints while V1 remains available:
 
 ## Technical Implementation Details
 
-### Model Building (`ro_model_builder_v2.py`)
-- Implements `WaterTAPCostingDetailed` for transparency
-- Adds ZO pretreatment units with proper database connection
-- Includes Translator blocks for property package bridging
-- Configures ERD with automatic detection logic
-- Implements CIP system as custom block with expressions
+### Hybrid Simulator (`utils/hybrid_ro_simulator.py`)
+- Literature-based performance calculations (Film Theory Model)
+- Ion-specific rejection using Stokes radius and charge
+- Stage-wise pressure drop and osmotic pressure
+- Integrates WaterTAP costing via lightweight mock units
+- 10-30x faster than full flowsheet simulation
 
-### Results Extraction (`ro_results_extractor_v2.py`)
-- Extracts detailed capital cost breakdown by equipment type
-- Calculates operating costs with component tracking
-- Provides LCOW breakdown showing contribution of each cost element
-- Tracks chemical consumption in physical units (kg/year)
+### Mock Units for Costing (`utils/mock_units_for_costing.py`)
+- Lightweight UnitModelBlockData classes for WaterTAP integration
+- MockPump, MockRO, MockChemicalAddition, MockStorageTank, MockCartridgeFilter
+- Calls WaterTAP's native costing methods without full simulation
+- Provides accurate CAPEX without convergence issues
 
-### Economic Defaults (`economic_defaults.py`)
+### PHREEQC Integration (`utils/phreeqc_client.py`)
+- Thermodynamically-accurate concentrate chemistry
+- pH tracking, CO2 degassing, ion speciation
+- Saturation index calculations for scaling prediction
+- Maximum sustainable recovery determination
+
+### Economic Defaults (`utils/economic_defaults.py`)
 - Centralized source of truth for all default values
 - Aligned with WaterTAP standard assumptions
 - Prevents hidden defaults in code
-- Supports membrane-type-specific defaults
 
 ## Future Enhancements
 
@@ -310,5 +291,4 @@ The V2 API is accessed through new endpoints while V1 remains available:
 ## Support
 
 For issues or questions about the V2 API:
-- GitHub Issues: https://github.com/anthropics/claude-code/issues
-- Documentation: https://docs.anthropic.com/en/docs/claude-code/
+- GitHub Issues: https://github.com/puran-water/ro-design-mcp/issues

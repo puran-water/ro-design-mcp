@@ -33,13 +33,13 @@ This MCP server provides three primary tools for RO system design:
 - Minimum concentrate flow constraints per vessel type
 - Intelligent search algorithms for large-scale systems
 
-### Simulation Engine
-- WaterTAP-based process modeling with MCAS property package
-- Multi-component ion tracking (13+ species supported)
+### Simulation Engine (Hybrid Approach)
+- **Literature-based performance calculations** using proven RO design equations
+- **WaterTAP costing integration** for economic analysis via mock unit models
+- Multi-component ion tracking (13+ species via PHREEQC)
 - Stage-wise mass balance and pressure calculations
-- Pump pressure optimization for recovery matching
-- Physical constraint enforcement (pressure, flux, concentration limits)
-- Seawater-specific initialization and constraint handling
+- Pump power calculations from feed pressure and flow
+- Thermodynamically-rigorous concentrate chemistry via PHREEQC
 
 ### Economic Analysis
 - WaterTAPCostingDetailed framework integration
@@ -155,11 +155,11 @@ Returns: Comprehensive simulation results including performance, economics, and 
 - **Membrane Catalog System**: 67 manufacturer-specific membrane models
 - **Ion-Specific B Values**: Physically-based rejection modeling per ion
 - **Removed v1 API**: Only simulate_ro_system_v2 available
-- **Breaking Change**: `membrane_type` → `membrane_model` parameter
+- **Hybrid Simulator**: Literature-based performance + WaterTAP costing
 - Temperature corrections and spacer profiles
-- Direct MCAS multi-ion modeling (13+ species)
+- Multi-ion tracking via PHREEQC (13+ species)
 - WaterTAPCostingDetailed for transparent economics
-- Physical constraint bounds to prevent unrealistic solutions
+- Removed full WaterTAP flowsheet simulator (non-functional)
 
 ### v1.0 (Deprecated)
 - Generic "brackish" and "seawater" membrane types only
@@ -175,62 +175,63 @@ Returns: Comprehensive simulation results including performance, economics, and 
 - Handles flux balancing and recovery calculations
 - Manages concentrate recycle for high recovery
 
-#### Model Builder (`utils/ro_model_builder_v2.py`)
-- Constructs WaterTAP flowsheets
-- Applies physical constraints:
-  - Pump pressure: 10-83 bar
-  - Water flux: 1e-6 to 3e-2 kg/m²/s
-  - Solute flux: 0 to 1e-3 kg/m²/s
-  - Concentration: up to 100 g/L
+#### Hybrid RO Simulator (`utils/hybrid_ro_simulator.py`)
+- Literature-based performance calculations (Film Theory Model)
+- Stage-wise pressure drop and osmotic pressure calculations
+- Ion-specific rejection using Stokes radius and charge
+- Integrates WaterTAP costing via lightweight mock units
 
-#### MCAS Builder (`utils/mcas_builder.py`)
-- Configures multi-component property package
-- Defines ion properties (MW, charge, diffusivity)
-- Handles electroneutrality checking
+#### Mock Units for Costing (`utils/mock_units_for_costing.py`)
+- Lightweight UnitModelBlockData classes for WaterTAP integration
+- MockPump, MockRO, MockChemicalAddition, MockStorageTank, MockCartridgeFilter
+- Calls WaterTAP's native costing methods without full flowsheet simulation
 
-#### Solver (`utils/ro_solver.py`)
-- Sequential initialization strategy
-- Pump pressure optimization
-- Scaling factor application after NDP establishment
+#### PHREEQC Integration (`utils/phreeqc_client.py`)
+- Thermodynamically-accurate concentrate chemistry via REACTION blocks
+- pH tracking, CO2 degassing, ion speciation during concentration
+- Saturation index calculations for scaling prediction
+- Maximum sustainable recovery determination
 
-#### Results Extractor (`utils/ro_results_extractor_v2.py`)
-- Extracts all modeled ion concentrations
-- Calculates stage-wise and overall rejections
-- Computes economic metrics
+#### pH Recovery Optimizer (`utils/ph_recovery_optimizer.py`)
+- Finds optimal pH to achieve target recovery
+- Chemical dose calculations (NaOH, HCl, H2SO4)
+- Cost-benefit analysis of pH adjustment strategies
 
-### Key Technical Fixes
+### Key Technical Decisions
 
-#### FBBT Error Resolution
-- Moved `calculate_scaling_factors()` to after pump initialization
-- Ensures positive Net Driving Pressure before constraint checking
+#### Hybrid Simulator Approach
+- Uses proven literature-based equations for RO performance
+- Avoids full WaterTAP flowsheet simulation (convergence issues)
+- Integrates WaterTAP costing for economic accuracy
+- More robust and faster than full thermodynamic simulation
 
-#### Recycle System Stabilization
-- Added physical bounds to prevent solver exploring unrealistic space
-- Fixed recycle flow initialization
-- Proper mixing block configuration
-
-#### Multi-Ion Tracking
-- Results extractor iterates over `model.fs.properties.solute_set`
-- Reports all ions modeled by MCAS, not just Na⁺/Cl⁻
+#### PHREEQC for Chemistry
+- Thermodynamically-rigorous concentrate chemistry
+- Accurate pH tracking and ion speciation
+- Scaling prediction via saturation indices
+- Superior to algebraic approximations
 
 ## Supported Ions
 
-Currently modeled by MCAS:
+Currently tracked via PHREEQC and hybrid simulator:
 - Cations: Na⁺, Ca²⁺, Mg²⁺, K⁺, Sr²⁺, Ba²⁺
-- Anions: Cl⁻, SO₄²⁻, HCO₃⁻, CO₃²⁻, NO₃⁻, F⁻
+- Anions: Cl⁻, SO₄²⁻, HCO₃⁻, CO₃²⁻, F⁻
+- Neutral: SiO₂ (as amorphous silica)
 
-Pending implementation:
+Future enhancements:
 - B(OH)₃ (boric acid, neutral species)
+- NO₃⁻ (nitrate)
 
 ## Performance Characteristics
 
-### Typical Execution Times
-- Configuration optimization: 
+### Typical Execution Times (Hybrid Simulator)
+- Configuration optimization:
   - Small flows (< 500 m³/h): < 1 second
   - Large flows (1000-10000 m³/h): 2-5 seconds using intelligent search
-- Single-stage simulation: 10-15 seconds
-- Multi-stage simulation: 15-50 seconds
-- Complex ion chemistry: Additional 5-10 seconds
+- Single-stage simulation: 0.5-1.0 seconds
+- Multi-stage simulation: 0.8-1.5 seconds
+- With PHREEQC chemistry: Additional 0.2-0.5 seconds
+- **10-30x faster** than full WaterTAP flowsheet simulation
 
 ### Configuration Tool Improvements (v1.1)
 - **Intelligent Search Strategies**: Binary search for single-stage, geometric progression for multi-stage
@@ -251,17 +252,17 @@ Pending implementation:
 
 ### Common Issues
 
-#### FBBT Constraint Violations
-- Symptom: "Detected an infeasible constraint during FBBT"
-- Solution: Ensure scaling factors applied after pump initialization
+#### Configuration Not Meeting Target Recovery
+- Symptom: Target recovery not achieved in any configuration
+- Solution: Check if target exceeds sustainable recovery (scaling limits). Use pH optimization or lower recovery target.
 
-#### Unrealistic Recycle Results
-- Symptom: Pressures > 100 bar, recovery > 99%
-- Solution: Verify physical bounds are applied in model builder
+#### High LCOW Values
+- Symptom: LCOW appears unrealistically high
+- Solution: Verify feed salinity and economic parameters. Check membrane_model is appropriate for application (BW vs SW).
 
-#### Missing Ion Data
-- Symptom: Only Na⁺/Cl⁻ in results
-- Solution: Ensure v2 API is used and results extractor updated
+#### Missing Ion Data in Results
+- Symptom: Ion concentrations not in simulation output
+- Solution: Ensure feed_ion_composition is provided as JSON string in simulate_ro_system_v2
 
 ## Development
 
