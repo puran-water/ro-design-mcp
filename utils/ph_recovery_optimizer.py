@@ -312,7 +312,7 @@ class pHRecoveryOptimizer:
             'critical_saturation_indices': critical_si,
             'max_recovery': target_recovery if achievable else self._find_max_recovery_at_pH(
                 feed_composition, target_ph, temperature_c, use_antiscalant
-            )['recovery']
+            )
         }
 
     def _find_max_recovery_at_pH(
