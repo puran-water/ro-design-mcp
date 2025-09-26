@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ro-design-mcp": {
+      "type": "stdio",
+      "command": "/path/to/your/venv/bin/python",
+      "args": [
+        "/path/to/ro-design-mcp/server.py"
+      ],
+      "env": {
+        "MCP_TIMEOUT": "600000",
+        "RO_DESIGN_MCP_ROOT": "/path/to/ro-design-mcp",
+        "MCP_SIMULATION_TIMEOUT_S": "280"
+      }
+    }
+  }
+}

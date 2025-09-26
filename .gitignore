@@ -139,6 +139,9 @@ artifacts/
 # Local configuration
 local_config.yaml
 
+# MCP configuration (use .mcp.json.example as template)
+.mcp.json
+
 # Development and testing files
 test_*.py
 test_bugs.py
