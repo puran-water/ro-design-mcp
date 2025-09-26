@@ -287,7 +287,10 @@ def simulate_ro_hybrid(
             pump_power_kw=total_power_kw,
             permeate_flow_m3h=sum(stage_permeate_flows),
             feed_pressure_bar=results['stages'][0]['feed_pressure_bar'],
-            feed_flow_m3h=feed_flow_m3h
+            feed_flow_m3h=feed_flow_m3h,
+            configuration=configuration,
+            feed_composition_mg_l=feed_composition_mg_l,
+            include_ancillary=True
         )
         results['economics'] = economics
         logger.info("Successfully integrated WaterTAP economics with hybrid simulation")
@@ -484,7 +487,10 @@ def calculate_watertap_economics(
     pump_power_kw: float,
     permeate_flow_m3h: float,
     feed_pressure_bar: float,
-    feed_flow_m3h: float = None
+    feed_flow_m3h: float = None,
+    configuration: dict = None,
+    feed_composition_mg_l: dict = None,
+    include_ancillary: bool = False
 ) -> dict:
     """
     Calculate CAPEX using WaterTAP costing correlations with mock units.
@@ -506,6 +512,12 @@ def calculate_watertap_economics(
         Feed pressure (to determine pump type)
     feed_flow_m3h : float, optional
         Feed flow rate (for pump sizing)
+    configuration : dict, optional
+        Full configuration dict with stage info (for CIP sizing)
+    feed_composition_mg_l : dict, optional
+        Feed water composition (for chemical dosing)
+    include_ancillary : bool, optional
+        Whether to include ancillary equipment (default False)
 
     Returns
     -------
@@ -516,7 +528,13 @@ def calculate_watertap_economics(
         from pyomo.environ import ConcreteModel, value
         from idaes.core import FlowsheetBlock
         from watertap.costing import WaterTAPCostingDetailed
-        from utils.mock_units_for_costing import create_mock_pump_costed, create_mock_ro_costed
+        from utils.mock_units_for_costing import (
+            create_mock_pump_costed,
+            create_mock_ro_costed,
+            create_mock_chemical_addition_costed,
+            create_mock_storage_tank_costed,
+            create_mock_cartridge_filter_costed
+        )
 
         # Create model with flowsheet
         m = ConcreteModel()
@@ -574,11 +592,193 @@ def calculate_watertap_economics(
         else:
             membrane_capex = value(ro.costing.capital_cost)
 
+        # Initialize ancillary equipment tracking
+        ancillary_capex = 0
+        ancillary_opex = 0
+        equipment_details = {}
+
+        # Add ancillary equipment if requested
+        if include_ancillary and configuration:
+            logger.info("Adding ancillary equipment to costing...")
+
+            # 1. Main skid cartridge filter (always required)
+            flow_for_filter = feed_flow_m3h if feed_flow_m3h else permeate_flow_m3h / 0.75
+            main_filter = create_mock_cartridge_filter_costed(
+                flowsheet=m.fs,
+                name='main_cartridge_filter',
+                flow_m3h=flow_for_filter,
+                costing_block=m.fs.costing
+            )
+            if hasattr(main_filter.costing, 'capital_cost_constraint'):
+                constraint_expr = main_filter.costing.capital_cost_constraint.body
+                if len(constraint_expr.args) >= 2:
+                    filter_capex = -value(constraint_expr.args[1])
+                    main_filter.costing.capital_cost.fix(filter_capex)
+                else:
+                    filter_capex = value(main_filter.costing.capital_cost)
+            else:
+                filter_capex = value(main_filter.costing.capital_cost)
+            ancillary_capex += filter_capex
+            equipment_details['main_cartridge_filter'] = {'capex': filter_capex}
+            logger.info(f"Main cartridge filter CAPEX: ${filter_capex:,.0f}")
+
+            # 2. CIP system components (tank + pump + cartridge filter)
+            # Size CIP based on largest stage
+            largest_stage = configuration['stages'][0]
+            max_vessels = largest_stage.get('n_vessels', 4)
+            for stage_config in configuration['stages']:
+                n_vessels = stage_config.get('n_vessels', 4)
+                if n_vessels > max_vessels:
+                    max_vessels = n_vessels
+                    largest_stage = stage_config
+
+            elements_per_vessel = largest_stage.get('elements_per_vessel', 7)
+            vessel_diameter_inch = largest_stage.get('vessel_diameter_inch', 8.0)
+
+            # CIP tank sizing (from cip_system_zo.py logic)
+            vessel_volume_gal = 52 * (elements_per_vessel / 6) * ((vessel_diameter_inch / 8) ** 2)
+            total_volume_gal = vessel_volume_gal * max_vessels * 1.2
+            cip_tank_volume_m3 = total_volume_gal * 0.00378541
+
+            cip_tank = create_mock_storage_tank_costed(
+                flowsheet=m.fs,
+                name='cip_tank',
+                volume_m3=cip_tank_volume_m3,
+                costing_block=m.fs.costing
+            )
+            if hasattr(cip_tank.costing, 'capital_cost_constraint'):
+                constraint_expr = cip_tank.costing.capital_cost_constraint.body
+                if len(constraint_expr.args) >= 2:
+                    tank_capex = -value(constraint_expr.args[1])
+                    cip_tank.costing.capital_cost.fix(tank_capex)
+                else:
+                    tank_capex = value(cip_tank.costing.capital_cost)
+            else:
+                tank_capex = value(cip_tank.costing.capital_cost)
+            ancillary_capex += tank_capex
+            logger.info(f"CIP tank CAPEX: ${tank_capex:,.0f}")
+
+            # CIP pump sizing
+            gpm_per_vessel = 37.5 * ((vessel_diameter_inch / 8) ** 2)
+            total_flow_gpm = gpm_per_vessel * max_vessels
+            cip_flow_m3h = total_flow_gpm * 0.227124
+            cip_pressure_bar = 3.0
+            cip_power_kw = (cip_flow_m3h / 3600) * cip_pressure_bar * 1e5 / (0.75 * 1000)
+
+            cip_pump = create_mock_pump_costed(
+                flowsheet=m.fs,
+                name='cip_pump',
+                power_kw=cip_power_kw,
+                pressure_bar=cip_pressure_bar,
+                costing_block=m.fs.costing,
+                flow_m3h=cip_flow_m3h
+            )
+            if hasattr(cip_pump.costing, 'capital_cost_constraint'):
+                constraint_expr = cip_pump.costing.capital_cost_constraint.body
+                if len(constraint_expr.args) >= 2:
+                    cip_pump_capex = -value(constraint_expr.args[1])
+                    cip_pump.costing.capital_cost.fix(cip_pump_capex)
+                else:
+                    cip_pump_capex = value(cip_pump.costing.capital_cost)
+            else:
+                cip_pump_capex = value(cip_pump.costing.capital_cost)
+            ancillary_capex += cip_pump_capex
+            logger.info(f"CIP pump CAPEX: ${cip_pump_capex:,.0f}")
+
+            # CIP cartridge filter (always required)
+            cip_filter = create_mock_cartridge_filter_costed(
+                flowsheet=m.fs,
+                name='cip_cartridge_filter',
+                flow_m3h=cip_flow_m3h,
+                costing_block=m.fs.costing
+            )
+            if hasattr(cip_filter.costing, 'capital_cost_constraint'):
+                constraint_expr = cip_filter.costing.capital_cost_constraint.body
+                if len(constraint_expr.args) >= 2:
+                    cip_filter_capex = -value(constraint_expr.args[1])
+                    cip_filter.costing.capital_cost.fix(cip_filter_capex)
+                else:
+                    cip_filter_capex = value(cip_filter.costing.capital_cost)
+            else:
+                cip_filter_capex = value(cip_filter.costing.capital_cost)
+            ancillary_capex += cip_filter_capex
+            logger.info(f"CIP cartridge filter CAPEX: ${cip_filter_capex:,.0f}")
+
+            equipment_details['cip_system'] = {
+                'tank_capex': tank_capex,
+                'pump_capex': cip_pump_capex,
+                'filter_capex': cip_filter_capex,
+                'total_cip_capex': tank_capex + cip_pump_capex + cip_filter_capex,
+                'tank_volume_m3': cip_tank_volume_m3,
+                'pump_flow_m3h': cip_flow_m3h
+            }
+
+            # 3. Chemical dosing (if feed composition provided)
+            if feed_composition_mg_l:
+                try:
+                    from utils.chemical_dosing import calculate_antiscalant_dose
+                    dose_mg_L = calculate_antiscalant_dose(
+                        feed_composition_mg_l,
+                        recovery=permeate_flow_m3h / flow_for_filter if flow_for_filter else 0.75
+                    )
+
+                    if dose_mg_L > 0:
+                        antiscalant = create_mock_chemical_addition_costed(
+                            flowsheet=m.fs,
+                            name='antiscalant_system',
+                            flow_m3h=flow_for_filter,
+                            dose_mg_L=dose_mg_L,
+                            costing_block=m.fs.costing,
+                            chemical_type='anti_scalant'
+                        )
+                        if hasattr(antiscalant.costing, 'capital_cost_constraint'):
+                            constraint_expr = antiscalant.costing.capital_cost_constraint.body
+                            if len(constraint_expr.args) >= 2:
+                                chem_capex = -value(constraint_expr.args[1])
+                                antiscalant.costing.capital_cost.fix(chem_capex)
+                            else:
+                                chem_capex = value(antiscalant.costing.capital_cost)
+                        else:
+                            chem_capex = value(antiscalant.costing.capital_cost)
+                        ancillary_capex += chem_capex
+
+                        # Chemical storage tank (14-day supply)
+                        daily_consumption_kg = dose_mg_L * flow_for_filter * 24 / 1000
+                        storage_volume_m3 = (daily_consumption_kg * 14) / 1000
+                        chem_tank = create_mock_storage_tank_costed(
+                            flowsheet=m.fs,
+                            name='antiscalant_tank',
+                            volume_m3=storage_volume_m3,
+                            costing_block=m.fs.costing
+                        )
+                        if hasattr(chem_tank.costing, 'capital_cost_constraint'):
+                            constraint_expr = chem_tank.costing.capital_cost_constraint.body
+                            if len(constraint_expr.args) >= 2:
+                                chem_tank_capex = -value(constraint_expr.args[1])
+                                chem_tank.costing.capital_cost.fix(chem_tank_capex)
+                            else:
+                                chem_tank_capex = value(chem_tank.costing.capital_cost)
+                        else:
+                            chem_tank_capex = value(chem_tank.costing.capital_cost)
+                        ancillary_capex += chem_tank_capex
+
+                        equipment_details['chemical_dosing'] = {
+                            'dose_mg_L': dose_mg_L,
+                            'dosing_system_capex': chem_capex,
+                            'storage_tank_capex': chem_tank_capex,
+                            'total_chemical_capex': chem_capex + chem_tank_capex
+                        }
+                        logger.info(f"Chemical dosing CAPEX: ${chem_capex + chem_tank_capex:,.0f}")
+                except Exception as e:
+                    logger.warning(f"Could not add chemical dosing: {e}")
+
+            logger.info(f"Total ancillary equipment CAPEX: ${ancillary_capex:,.0f}")
+
         # Aggregate capital costs (no LCOW calculation needed)
         m.fs.costing.cost_process()
 
         # Extract CAPEX - sum individual costs since total_capital_cost needs solving
-        total_capex = pump_capex + membrane_capex
+        total_capex = pump_capex + membrane_capex + ancillary_capex
 
         # Calculate simple OPEX from hybrid results
         annual_hours = 8760 * 0.9  # 90% utilization
@@ -591,7 +791,7 @@ def calculate_watertap_economics(
             membrane_replacement = membrane_area_m2 * 30 * 0.2  # $30/m² * 20%/year
 
         maintenance = total_capex * 0.03  # 3% of capital
-        annual_opex = electricity_cost + membrane_replacement + maintenance
+        annual_opex = electricity_cost + membrane_replacement + maintenance + ancillary_opex
 
         # Simple LCOW for reference (not from WaterTAP)
         annual_production = permeate_flow_m3h * annual_hours
@@ -602,12 +802,14 @@ def calculate_watertap_economics(
             'capital_cost_usd': total_capex,
             'pump_capital_cost_usd': pump_capex,
             'membrane_capital_cost_usd': membrane_capex,
+            'ancillary_capital_cost_usd': ancillary_capex,
+            'equipment_details': equipment_details if include_ancillary else {},
             'annual_operating_cost_usd': annual_opex,
             'annual_electricity_cost_usd': electricity_cost,
             'annual_membrane_replacement_usd': membrane_replacement,
             'annual_maintenance_usd': maintenance,
             'simple_lcow_usd_m3': simple_lcow,  # For reference only
-            'method': 'WaterTAP CAPEX + Simple OPEX'
+            'method': 'WaterTAP CAPEX + Simple OPEX' + (' + Ancillary Equipment' if include_ancillary else '')
         }
 
         logger.info(
