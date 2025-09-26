@@ -492,14 +492,15 @@ async def simulate_ro_system_v2(
     economic_params: Optional[Dict[str, Any]] = None,
     chemical_dosing: Optional[Dict[str, Any]] = None,
     optimization_mode: bool = False,
+    use_hybrid_simulator: bool = False,
     ctx: Context = None
 ) -> Dict[str, Any]:
     """
     Run enhanced WaterTAP simulation with detailed economic modeling (v2).
-    
+
     This version includes comprehensive costing with WaterTAPCostingDetailed,
     chemical consumption tracking, ancillary equipment, and optimization support.
-    
+
     Args:
         configuration: Output from optimize_ro_configuration tool
         feed_salinity_ppm: Feed water salinity in ppm
@@ -520,6 +521,8 @@ async def simulate_ro_system_v2(
             - cip_dose_kg_per_m2: CIP chemical dose (default 0.5)
             - And more... call get_ro_defaults for full list
         optimization_mode: If True, returns model handle for plant-wide optimization
+        use_hybrid_simulator: If True, uses literature-based calculations for performance
+                             with WaterTAP economics only (more robust, avoids FBBT issues)
     
     Returns:
         Dictionary containing:
@@ -633,6 +636,7 @@ async def simulate_ro_system_v2(
             "economic_params": economic_params,
             "chemical_dosing": chemical_dosing,
             "optimization_mode": optimization_mode,
+            "use_hybrid_simulator": use_hybrid_simulator,
             "api_version": "v2"
         }
         
@@ -663,19 +667,49 @@ async def simulate_ro_system_v2(
         # Log the request
         logger.info(f"Starting v2 simulation for {configuration.get('array_notation', 'unknown')} array")
         logger.info(f"Economic mode: {'optimization' if optimization_mode else 'simulation'}")
-        
+        logger.info(f"Simulator: {'hybrid (literature-based)' if use_hybrid_simulator else 'WaterTAP (full)'}")
+
         # Start timing
         start_time = time.time()
-        
-        # Run simulation in isolated child process
-        logger.info("Running v2 simulation in child process...")
-        sim_input = {
-            **input_payload,
-            "initialization_strategy": "sequential",
-            # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
-        }
 
-        simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
+        if use_hybrid_simulator:
+            # Use the hybrid simulator for more robust calculations
+            logger.info("Using hybrid simulator with literature-based calculations")
+            from utils.hybrid_ro_simulator import simulate_ro_hybrid
+
+            # Run hybrid simulation directly (no subprocess needed, no stdout issues)
+            try:
+                simulation_results = await anyio.to_thread.run_sync(
+                    simulate_ro_hybrid,
+                    configuration,
+                    parsed_ion_composition,
+                    feed_temperature_c,
+                    False  # use_interstage_boost
+                )
+                # Format results to match expected structure
+                simulation_results = {
+                    "status": "success",
+                    "performance": simulation_results['system_performance'],
+                    "economics": simulation_results['economics'],
+                    "stage_results": simulation_results['stages'],
+                    "power": simulation_results['power_consumption'],
+                    "simulator": "hybrid"
+                }
+            except Exception as e:
+                logger.error(f"Hybrid simulation failed: {e}")
+                simulation_results = {
+                    "status": "error",
+                    "message": str(e)
+                }
+        else:
+            # Run full WaterTAP simulation in isolated child process
+            logger.info("Running v2 WaterTAP simulation in child process...")
+            sim_input = {
+                **input_payload,
+                "initialization_strategy": "sequential",
+                # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
+            }
+            simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
         
         execution_time = time.time() - start_time
         logger.info(f"V2 simulation completed in {execution_time:.1f} seconds")

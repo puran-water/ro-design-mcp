@@ -341,3 +341,90 @@ def get_membrane_properties_enhanced(
     # Default fallback
     logger.warning("No membrane specified, using default brackish properties")
     return get_membrane_properties_mcas('brackish', None, solute_list)
+
+
+def get_membrane_properties_for_simulation(
+    membrane_model: str,
+    temperature_c: float = 25
+) -> Dict:
+    """
+    Get simplified membrane properties for hybrid simulation.
+
+    This function provides membrane properties in a format suitable for
+    the hybrid RO simulator, which uses literature-based calculations.
+
+    Args:
+        membrane_model: Membrane model name (e.g., 'BW30_PRO_400', 'SW30HRLE_440')
+                       or generic type ('brackish', 'seawater')
+        temperature_c: Operating temperature in Celsius
+
+    Returns:
+        Dict with simplified membrane properties:
+        - A_value: Water permeability coefficient (m/s/Pa)
+        - B_value: Salt permeability coefficient (m/s)
+        - rejection_default: Default salt rejection (0-1)
+        - rejection_Na+, rejection_Cl-, etc.: Ion-specific rejections
+    """
+    temperature_K = temperature_c + 273.15
+
+    # Try to get from catalog first
+    if membrane_model and membrane_model not in ['brackish', 'seawater']:
+        try:
+            props = get_membrane_from_catalog(membrane_model, None, temperature_K)
+
+            # Calculate average rejection from B values
+            # R = 1 - (B/A) * (1/ΔP) where ΔP is typical operating pressure
+            typical_pressure_bar = 15 if 'BW' in membrane_model else 55  # bar
+            typical_pressure_pa = typical_pressure_bar * 1e5
+
+            rejections = {}
+            for ion, B_value in props['B_comp'].items():
+                # Simplified rejection calculation
+                # More accurate would consider concentration and flux
+                rejection = 1 - (B_value / props['A_w']) / typical_pressure_pa
+                rejection = max(0, min(0.999, rejection))  # Bound between 0 and 0.999
+                rejections[f'rejection_{ion}'] = rejection
+
+            return {
+                'A_value': props['A_w'],
+                'B_value': np.mean(list(props['B_comp'].values())),  # Average B
+                'rejection_default': np.mean(list(rejections.values())),
+                **rejections,
+                'channel_height': props.get('channel_height', 7.9e-4),
+                'spacer_porosity': props.get('spacer_porosity', 0.85)
+            }
+        except Exception as e:
+            logger.warning(f"Could not load from catalog: {e}, falling back to generic type")
+
+    # Fall back to generic type
+    if 'sea' in membrane_model.lower():
+        # Seawater membrane properties
+        A_value = 3.0e-12  # m/s/Pa
+        B_value = 1.5e-8   # m/s
+        rejection_default = 0.995
+    else:
+        # Brackish water membrane properties (default)
+        A_value = 9.63e-12  # m/s/Pa (BW30-400 typical)
+        B_value = 5.58e-8   # m/s
+        rejection_default = 0.985
+
+    # Apply temperature correction
+    tcf = np.exp(2640 * (1/298.15 - 1/temperature_K))
+    A_value_corrected = A_value * tcf
+    B_value_corrected = B_value * tcf
+
+    # Ion-specific rejections (typical values)
+    return {
+        'A_value': A_value_corrected,
+        'B_value': B_value_corrected,
+        'rejection_default': rejection_default,
+        'rejection_Na+': rejection_default,
+        'rejection_Cl-': rejection_default,
+        'rejection_Ca+2': min(0.999, rejection_default + 0.01),  # Higher for divalent
+        'rejection_Mg+2': min(0.999, rejection_default + 0.01),
+        'rejection_SO4-2': min(0.999, rejection_default + 0.012),
+        'rejection_HCO3-': rejection_default - 0.03,  # Lower for bicarbonate
+        'rejection_B': 0.70 if 'sea' not in membrane_model.lower() else 0.85,  # Boron
+        'channel_height': 7.9e-4,  # m
+        'spacer_porosity': 0.85
+    }

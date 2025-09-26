@@ -8,7 +8,23 @@ cause FBBT errors due to recovery bounds in WaterTAP RO models.
 import logging
 from typing import Dict, List, Tuple
 
+from .mcas_builder import ION_DATA, ION_NOTATION_MAP
+
 logger = logging.getLogger(__name__)
+
+
+def _normalize_ion_notation(ion_composition: Dict[str, float]) -> Dict[str, float]:
+    """Convert ion keys to WaterTAP notation while preserving totals."""
+    normalized: Dict[str, float] = {}
+    for ion, conc in ion_composition.items():
+        if ion in ION_DATA:
+            key = ion
+        elif ion in ION_NOTATION_MAP:
+            key = ION_NOTATION_MAP[ion]
+        else:
+            key = ion
+        normalized[key] = normalized.get(key, 0.0) + conc
+    return normalized
 
 
 def categorize_ions_by_concentration(
@@ -25,9 +41,11 @@ def categorize_ions_by_concentration(
     Returns:
         Tuple of (major_ions, trace_ions) dictionaries
     """
+    ion_composition = _normalize_ion_notation(ion_composition)
+
     major_ions = {}
     trace_ions = {}
-    
+
     for ion, conc in ion_composition.items():
         if conc < trace_threshold_mg_l:
             trace_ions[ion] = conc
