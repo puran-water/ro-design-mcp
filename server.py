@@ -59,8 +59,7 @@ from utils.response_formatter import (
 from utils.helpers import validate_salinity
 from utils.stdout_redirect import redirect_stdout_to_stderr
 
-# Import direct simulation and artifact management
-from utils.simulate_ro import run_ro_simulation
+# Import artifact management
 from utils.artifacts import (
     deterministic_run_id,
     check_existing_results,
@@ -84,73 +83,11 @@ logger = get_configured_logger(__name__)
 # Create FastMCP instance
 mcp = FastMCP("RO Design Server")
 
-# Async-friendly subprocess runner for simulation isolation
+# Async-friendly execution
 import anyio
-import subprocess
 
 PROJECT_ROOT = Path(__file__).parent
 
-
-def _run_simulation_in_subprocess(sim_input: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Run the WaterTAP simulation in a child Python process to isolate stdout.
-
-    This prevents any native or solver-level output from corrupting the MCP STDIO
-    channel in the parent process.
-    """
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "utils.simulate_ro_cli"],
-            input=json.dumps(sim_input),
-            text=True,
-            capture_output=True,
-            cwd=str(PROJECT_ROOT),
-            check=False,
-        )
-
-        if proc.returncode != 0:
-            logger.error(f"Child simulation process failed (code {proc.returncode})")
-            # Log stderr in chunks for debugging AMPL errors
-            if proc.stderr:
-                stderr_lines = proc.stderr.split('\n')
-                for line in stderr_lines:
-                    if 'ERROR' in line or 'AMPL' in line or 'Stage' in line or 'NDP' in line or 'diagnostic' in line:
-                        logger.error(f"STDERR: {line}")
-            try:
-                return json.loads(proc.stdout) if proc.stdout else {
-                    "status": "error",
-                    "message": f"Child process failed with code {proc.returncode}",
-                    "stderr": proc.stderr,
-                }
-            except json.JSONDecodeError:
-                return {
-                    "status": "error",
-                    "message": f"Child process failed and returned non-JSON stdout",
-                    "stderr": proc.stderr,
-                    "raw_stdout": proc.stdout,
-                }
-
-        # Temporary logging for pressure-fixing debugging
-        if proc.stderr and "PRESSURE FIXING" in proc.stderr:
-            first_idx = proc.stderr.index("PRESSURE FIXING")
-            logger.info(f"Pressure-fixing executed: {proc.stderr[first_idx:min(first_idx+200, len(proc.stderr))]}...")
-
-        # Parse JSON from child's stdout
-        try:
-            return json.loads(proc.stdout) if proc.stdout else {
-                "status": "error",
-                "message": "No output from child process",
-            }
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse child JSON: {e}. Raw: {proc.stdout[:500]}")
-            return {
-                "status": "error",
-                "message": f"Invalid JSON from child process: {e}",
-                "raw_stdout": proc.stdout,
-            }
-    except Exception as e:
-        logger.error(f"Exception launching child process: {e}")
-        return {"status": "error", "message": f"Failed to launch child process: {e}"}
 
 
 @mcp.tool()
@@ -492,7 +429,6 @@ async def simulate_ro_system_v2(
     economic_params: Optional[Dict[str, Any]] = None,
     chemical_dosing: Optional[Dict[str, Any]] = None,
     optimization_mode: bool = False,
-    use_hybrid_simulator: bool = False,
     ctx: Context = None
 ) -> Dict[str, Any]:
     """
@@ -521,8 +457,9 @@ async def simulate_ro_system_v2(
             - cip_dose_kg_per_m2: CIP chemical dose (default 0.5)
             - And more... call get_ro_defaults for full list
         optimization_mode: If True, returns model handle for plant-wide optimization
-        use_hybrid_simulator: If True, uses literature-based calculations for performance
-                             with WaterTAP economics only (more robust, avoids FBBT issues)
+
+        Note: This version uses the hybrid simulator with literature-based calculations
+              for performance and WaterTAP economics only (more robust approach)
     
     Returns:
         Dictionary containing:
@@ -636,7 +573,6 @@ async def simulate_ro_system_v2(
             "economic_params": economic_params,
             "chemical_dosing": chemical_dosing,
             "optimization_mode": optimization_mode,
-            "use_hybrid_simulator": use_hybrid_simulator,
             "api_version": "v2"
         }
         
@@ -667,49 +603,38 @@ async def simulate_ro_system_v2(
         # Log the request
         logger.info(f"Starting v2 simulation for {configuration.get('array_notation', 'unknown')} array")
         logger.info(f"Economic mode: {'optimization' if optimization_mode else 'simulation'}")
-        logger.info(f"Simulator: {'hybrid (literature-based)' if use_hybrid_simulator else 'WaterTAP (full)'}")
+        logger.info("Using hybrid simulator with literature-based calculations")
 
         # Start timing
         start_time = time.time()
 
-        if use_hybrid_simulator:
-            # Use the hybrid simulator for more robust calculations
-            logger.info("Using hybrid simulator with literature-based calculations")
-            from utils.hybrid_ro_simulator import simulate_ro_hybrid
+        # Use the hybrid simulator for robust calculations with WaterTAP costing
+        from utils.hybrid_ro_simulator import simulate_ro_hybrid
 
-            # Run hybrid simulation directly (no subprocess needed, no stdout issues)
-            try:
-                simulation_results = await anyio.to_thread.run_sync(
-                    simulate_ro_hybrid,
-                    configuration,
-                    parsed_ion_composition,
-                    feed_temperature_c,
-                    False  # use_interstage_boost
-                )
-                # Format results to match expected structure
-                simulation_results = {
-                    "status": "success",
-                    "performance": simulation_results['system_performance'],
-                    "economics": simulation_results['economics'],
-                    "stage_results": simulation_results['stages'],
-                    "power": simulation_results['power_consumption'],
-                    "simulator": "hybrid"
-                }
-            except Exception as e:
-                logger.error(f"Hybrid simulation failed: {e}")
-                simulation_results = {
-                    "status": "error",
-                    "message": str(e)
-                }
-        else:
-            # Run full WaterTAP simulation in isolated child process
-            logger.info("Running v2 WaterTAP simulation in child process...")
-            sim_input = {
-                **input_payload,
-                "initialization_strategy": "sequential",
-                # use_nacl_equivalent removed - defaults to False for direct MCAS modeling
+        # Run hybrid simulation directly (no subprocess needed, no stdout issues)
+        try:
+            simulation_results = await anyio.to_thread.run_sync(
+                simulate_ro_hybrid,
+                configuration,
+                parsed_ion_composition,
+                feed_temperature_c,
+                False  # use_interstage_boost
+            )
+            # Format results to match expected structure
+            simulation_results = {
+                "status": "success",
+                "performance": simulation_results['system_performance'],
+                "economics": simulation_results['economics'],
+                "stage_results": simulation_results['stages'],
+                "power": simulation_results['power_consumption'],
+                "simulator": "hybrid"
             }
-            simulation_results = await anyio.to_thread.run_sync(_run_simulation_in_subprocess, sim_input)
+        except Exception as e:
+            logger.error(f"Hybrid simulation failed: {e}")
+            simulation_results = {
+                "status": "error",
+                "message": str(e)
+            }
         
         execution_time = time.time() - start_time
         logger.info(f"V2 simulation completed in {execution_time:.1f} seconds")
