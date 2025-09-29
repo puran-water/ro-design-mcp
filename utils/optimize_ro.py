@@ -901,11 +901,13 @@ def optimize_vessel_array_configuration(
             results['actual_effective_feed_m3h'] = config.get('actual_effective_feed_m3h', config['effective_feed_flow_m3h'])
             results['effective_feed_salinity_ppm'] = config['effective_feed_salinity_ppm']
             results['system_recovery'] = config['system_recovery']
+            results['system_feed_flow_m3h'] = feed_flow_m3h  # Explicitly store fresh feed flow
         else:
             results['recycle_ratio'] = 0
             results['effective_feed_flow_m3h'] = feed_flow_m3h
             results['actual_effective_feed_m3h'] = feed_flow_m3h
             results['effective_feed_salinity_ppm'] = feed_salinity_ppm
+            results['system_feed_flow_m3h'] = feed_flow_m3h  # Same as effective for non-recycle
         
         # Build detailed stage information
         # Determine salt passage based on membrane model

@@ -129,7 +129,7 @@ def simulate_ro_hybrid(
         logger.info("Recycle configuration detected - solving for steady-state composition")
 
         # Extract recycle parameters
-        fresh_flow = configuration.get('system_feed_flow_m3h', configuration['stages'][0]['feed_flow_m3h'])
+        fresh_flow = configuration.get('system_feed_flow_m3h', configuration.get('feed_flow_m3h', configuration['stages'][0]['feed_flow_m3h']))
         recycle_flow = configuration['recycle_flow_m3h']
         disposal_flow = configuration['stages'][-1]['concentrate_flow_m3h'] - recycle_flow
 
@@ -259,7 +259,7 @@ def simulate_ro_hybrid(
     # For recycle cases, use the original fresh feed flow (before recycle)
     # This is stored in configuration['system_feed_flow_m3h'] if recycle is used
     system_feed_flow = configuration.get('system_feed_flow_m3h',
-                                         configuration['stages'][0]['feed_flow_m3h'])
+                                         configuration.get('feed_flow_m3h', configuration['stages'][0]['feed_flow_m3h']))
 
     results['system_performance'] = {
         'total_permeate_flow_m3h': sum(stage_permeate_flows),
@@ -269,6 +269,13 @@ def simulate_ro_hybrid(
         'final_reject_tds_mg_l': results['stages'][-1]['reject_tds_mg_l'],
         'final_reject_flow_m3h': results['stages'][-1]['concentrate_flow_m3h']
     }
+
+    # For recycle systems, add explicit disposal stream information
+    if has_recycle:
+        disposal_flow = configuration.get('disposal_flow_m3h',
+                                         results['stages'][-1]['concentrate_flow_m3h'] - configuration.get('recycle_flow_m3h', 0))
+        results['system_performance']['disposal_flow_m3h'] = disposal_flow
+        results['system_performance']['disposal_tds_mg_l'] = results['stages'][-1]['reject_tds_mg_l']
 
     # Power consumption summary
     results['power_consumption'] = {

@@ -5,6 +5,21 @@ All notable changes to the RO Design MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2025-09-29
+
+### Fixed
+- **Critical mass balance bug in recycle systems**: Fixed incorrect fresh feed flow reference in hybrid simulator
+  - `hybrid_ro_simulator.py` lines 132 and 261-262 now properly fallback to `feed_flow_m3h` instead of blended stage feed flow
+  - System recovery now calculated correctly (was reporting 50.6% instead of 85.1% for high-recovery recycle systems)
+  - Disposal stream TDS now matches mass balance (was ~50% too low due to concentration dilution from wrong flow basis)
+  - Impact: Recycle systems with 85% recovery now show correct high-pressure requirements (77.6 bar vs 44.5 bar) and permeate quality (571 mg/L vs 307 mg/L)
+- **Configuration structure enhancement**: Added explicit `system_feed_flow_m3h` to configuration output from `optimize_ro.py`
+- **Disposal stream reporting**: Added explicit `disposal_flow_m3h` and `disposal_tds_mg_l` to system performance results for recycle systems
+
+### Changed
+- Improved fallback chain for fresh feed flow determination in recycle configurations
+- Enhanced documentation to distinguish between stage concentrate (total) and disposal stream (after recycle split)
+
 ## [2.4.0] - 2025-09-26
 
 ### Removed
