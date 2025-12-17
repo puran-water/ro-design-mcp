@@ -326,7 +326,7 @@ def create_mock_pump_costed(
     from idaes.core import UnitModelCostingBlock
 
     # Create mock pump
-    pump = MockPump()
+    pump = MockPump()  # noqa: F821 - created by @declare_process_block_class
     setattr(flowsheet, name, pump)
 
     # Determine pump type based on pressure
@@ -368,7 +368,7 @@ def create_mock_ro_costed(
     from idaes.core import UnitModelCostingBlock
 
     # Create mock RO
-    ro = MockRO()
+    ro = MockRO()  # noqa: F821 - created by @declare_process_block_class
     setattr(flowsheet, name, ro)
 
     # Determine RO type based on pressure
@@ -413,7 +413,7 @@ def create_mock_chemical_addition_costed(
     """
     from idaes.core import UnitModelCostingBlock
 
-    chem = MockChemicalAddition()
+    chem = MockChemicalAddition()  # noqa: F821 - created by @declare_process_block_class
     chem.config.process_subtype = chemical_type
     setattr(flowsheet, name, chem)
 
@@ -448,7 +448,7 @@ def create_mock_storage_tank_costed(
     """
     from idaes.core import UnitModelCostingBlock
 
-    tank = MockStorageTank()
+    tank = MockStorageTank()  # noqa: F821 - created by @declare_process_block_class
     setattr(flowsheet, name, tank)
 
     tank.set_volume(volume_m3)
@@ -482,7 +482,7 @@ def create_mock_cartridge_filter_costed(
     """
     from idaes.core import UnitModelCostingBlock
 
-    filter_unit = MockCartridgeFilter()
+    filter_unit = MockCartridgeFilter()  # noqa: F821 - created by @declare_process_block_class
     setattr(flowsheet, name, filter_unit)
 
     filter_unit.set_flow(flow_m3h)
