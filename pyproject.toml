@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     {name = "Puran Water"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.10"
 homepage = "https://github.com/puran-water/ro-design-mcp"
 repository = "https://github.com/puran-water/ro-design-mcp"
