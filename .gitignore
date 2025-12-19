@@ -120,7 +120,7 @@ run_tests.py
 install.bat
 install.ps1
 run_economic_test.ps1
-pytest.ini
+# pytest.ini - now tracked in repo
 .coveragerc
 __pycache__/
 .pytest_cache/
@@ -142,8 +142,10 @@ local_config.yaml
 # MCP configuration (use .mcp.json.example as template)
 .mcp.json
 
-# Development and testing files
-test_*.py
+# Development and testing files (root level only)
+/test_*.py
+# Allow test files in tests/ directory
+!tests/test_*.py
 test_bugs.py
 MCP_Testing_Plan.md
 server_backup*.py
