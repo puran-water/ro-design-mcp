@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org)
 [![WaterTAP](https://img.shields.io/badge/WaterTAP-0.12.0-green)](https://watertap.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Production-success)](https://github.com/puran-water/ro-design-mcp)
+[![Status](https://img.shields.io/badge/Status-In%20Development-yellow)](https://github.com/puran-water/ro-design-mcp)
 
 Model Context Protocol server for reverse osmosis system design optimization and simulation using WaterTAP.
 
